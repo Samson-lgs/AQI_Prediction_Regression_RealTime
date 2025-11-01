@@ -1,0 +1,6 @@
+# Placeholder for trained model files
+# Models will be saved here:
+# - linear.pkl
+# - random_forest.pkl
+# - xgboost.pkl
+# - lstm.h5

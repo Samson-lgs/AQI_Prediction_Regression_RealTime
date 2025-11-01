@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: aqi_postgres
+    environment:
+      POSTGRES_DB: aqi_prediction
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - aqi_network
+
+  # Backend Flask API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aqi_backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: aqi_prediction
+      DB_USER: postgres
+      DB_PASSWORD: password
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - db
+    networks:
+      - aqi_network
+    command: python app.py
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aqi_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - aqi_network
+
+volumes:
+  postgres_data:
+
+networks:
+  aqi_network:
+    driver: bridge
