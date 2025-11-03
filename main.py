@@ -6,15 +6,16 @@ from datetime import datetime
 from api_handlers import CPCBHandler, OpenWeatherHandler, IQAirHandler
 from database.db_operations import DatabaseOperations
 from config.settings import CITIES, PRIORITY_CITIES, EXTENDED_CITIES, PARALLEL_WORKERS
-import logging
+from config.logging_config import setup_logger, get_city_logger, log_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import os
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Set up main logger
+logger = setup_logger(
+    'main',
+    os.path.join('logs', 'main.log')
 )
-logger = logging.getLogger(__name__)
 
 class DataCollectionPipeline:
     def __init__(self):
@@ -67,15 +68,17 @@ class DataCollectionPipeline:
                     if result:
                         completed += 1
                         results['success'].append(city)
-                        logger.info(f"✓ {city} ({city_type}): Completed [{completed}/{len(self.cities)}]")
+                        city_logger = get_city_logger('main', city)
+                        city_logger.info(f"✓ Collection completed ({city_type}) [{completed}/{len(self.cities)}]")
                     else:
                         failed += 1
                         results['failed'].append(city)
-                        logger.warning(f"✗ {city}: No data collected")
+                        city_logger = get_city_logger('main', city)
+                        city_logger.warning(f"✗ No data collected")
                 except Exception as e:
                     failed += 1
                     results['failed'].append(city)
-                    logger.error(f"✗ {city}: Error - {str(e)}")
+                    log_error('main', f"✗ {city}: Collection failed", exc_info=e)
         
         elapsed_time = time.time() - start_time
         logger.info(f"\n{'='*60}")
@@ -105,10 +108,12 @@ class DataCollectionPipeline:
                             self.db.insert_pollution_data(
                                 city, data['timestamp'], data, 'CPCB'
                             )
-                    logger.debug(f"  CPCB data: {city}")
+                    city_logger = get_city_logger('main', city)
+                    city_logger.debug("CPCB data collected and stored")
                     data_collected = True
             except Exception as e:
-                logger.debug(f"  CPCB failed for {city}: {str(e)}")
+                city_logger = get_city_logger('main', city)
+                city_logger.warning(f"CPCB data collection failed: {str(e)}")
             
             # 2. IQAir (if available)
             try:
@@ -118,15 +123,19 @@ class DataCollectionPipeline:
                         self.db.insert_pollution_data(
                             city, iqair_data['timestamp'], iqair_data, 'IQAir'
                         )
-                    logger.debug(f"  IQAir data: {city}")
+                    city_logger = get_city_logger('main', city)
+                    city_logger.debug("IQAir data collected and stored")
                     data_collected = True
             except Exception as e:
-                logger.debug(f"  IQAir failed for {city}: {str(e)}")
+                city_logger = get_city_logger('main', city)
+                city_logger.warning(f"IQAir data collection failed: {str(e)}")
             
             # 3. OpenWeather (always available)
             try:
                 coords = self.openweather.CITY_COORDINATES.get(city)
                 if coords:
+                    city_logger = get_city_logger('main', city)
+                    
                     # Weather data
                     weather_data = self.openweather.fetch_weather_data(city)
                     if weather_data:
@@ -134,7 +143,7 @@ class DataCollectionPipeline:
                             self.db.insert_weather_data(
                                 city, weather_data['timestamp'], weather_data
                             )
-                        logger.debug(f"  OpenWeather weather: {city}")
+                        city_logger.debug("OpenWeather weather data collected and stored")
                         data_collected = True
                     
                     # Pollution data
@@ -147,7 +156,7 @@ class DataCollectionPipeline:
                                 city, pollution_data['timestamp'], 
                                 pollution_data, 'OpenWeather'
                             )
-                        logger.debug(f"  OpenWeather pollution: {city}")
+                        city_logger.debug("OpenWeather pollution data collected and stored")
                         data_collected = True
             except Exception as e:
                 logger.debug(f"  OpenWeather failed for {city}: {str(e)}")
