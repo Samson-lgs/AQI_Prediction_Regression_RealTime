@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AQI Prediction System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Real-Time AQI Prediction</h1>
+        </header>
+        
+        <div class="search-section">
+            <input type="text" id="cityInput" placeholder="Enter city name">
+            <button onclick="getData()">Get Data</button>
+        </div>
+        
+        <div class="data-display">
+            <div class="card" id="current-aqi">
+                <h2>Current AQI</h2>
+                <div class="value"></div>
+            </div>
+            
+            <div class="card" id="weather-info">
+                <h2>Weather Information</h2>
+                <div class="value"></div>
+            </div>
+            
+            <div class="card" id="prediction">
+                <h2>AQI Prediction</h2>
+                <div class="value"></div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="aqiChart"></canvas>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
