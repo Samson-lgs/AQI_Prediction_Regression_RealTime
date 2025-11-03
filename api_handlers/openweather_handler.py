@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime
 import logging
+from typing import Dict, List, Optional, Any, Tuple
 from config.settings import OPENWEATHER_API_KEY, OPENWEATHER_BASE_URL, CITIES
 
 logging.basicConfig(level=logging.INFO)
@@ -11,6 +12,9 @@ class OpenWeatherHandler:
         self.api_key = OPENWEATHER_API_KEY
         self.base_url = OPENWEATHER_BASE_URL
         self.timeout = 10
+        self.cities = CITIES
+        
+        logger.info(f"OpenWeather Handler initialized for {len(self.CITY_COORDINATES)} cities")
     
     # ==========================================
     # ALL 56 INDIAN CITIES COORDINATES (MODIFIED)
@@ -85,50 +89,85 @@ class OpenWeatherHandler:
         'Dibrugarh': (27.4728, 94.9103),
     }
     
-    def fetch_weather_data(self, city):
-        """Fetch weather data for a city"""
+    def fetch_weather_data(self, city: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch weather data for a city
+        
+        Args:
+            city (str): Name of the city
+            
+        Returns:
+            Optional[Dict[str, Any]]: Parsed weather data or None if failed
+        """
         try:
             weather_url = 'https://api.openweathermap.org/data/2.5/weather'
             params = {
-                'q': city,
+                'q': f"{city},IN",  # Add country code for precision
                 'appid': self.api_key,
-                'units': 'metric'
+                'units': 'metric'  # Use metric units
             }
             
             response = requests.get(weather_url, params=params, timeout=self.timeout)
             response.raise_for_status()
             
             data = response.json()
+            logger.debug(f"OpenWeather weather data fetched for {city}")
             return self._parse_weather_data(data)
         
         except requests.exceptions.RequestException as e:
-            logger.error(f"OpenWeather API error for weather in {city}: {str(e)}")
+            logger.error(f"OpenWeather API error for weather data in {city}: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching weather data for {city}: {str(e)}")
             return None
     
-    def fetch_air_pollution_data(self, lat, lon):
-        """Fetch air pollution data using coordinates"""
+    def fetch_air_pollution_data(self, lat: float, lon: float) -> Optional[Dict[str, Any]]:
+        """
+        Fetch air pollution data using coordinates
+        
+        Args:
+            lat (float): Latitude
+            lon (float): Longitude
+        
+        Returns:
+            Optional[Dict[str, Any]]: Parsed pollution data or None if failed
+        """
         try:
+            url = f"{self.base_url}/data/2.5/air_pollution"
             params = {
                 'lat': lat,
                 'lon': lon,
                 'appid': self.api_key
             }
             
-            response = requests.get(self.base_url, params=params, timeout=self.timeout)
+            response = requests.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
             
             data = response.json()
+            logger.debug(f"OpenWeather pollution data fetched for coordinates ({lat}, {lon})")
             return self._parse_pollution_data(data)
         
         except requests.exceptions.RequestException as e:
-            logger.error(f"OpenWeather API error for pollution at ({lat},{lon}): {str(e)}")
+            logger.error(f"OpenWeather API error for pollution data: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching pollution data: {str(e)}")
             return None
     
-    def _parse_pollution_data(self, data):
-        """Parse pollution data from OpenWeather API"""
+    def _parse_pollution_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Parse pollution data from OpenWeather API
+        
+        Args:
+            data (Dict[str, Any]): Raw API response
+            
+        Returns:
+            Optional[Dict[str, Any]]: Parsed pollution data
+        """
         try:
             if 'list' in data and data['list']:
                 pollution = data['list'][0]['components']
+                aqi = data['list'][0].get('main', {}).get('aqi')
                 
                 return {
                     'timestamp': datetime.now(),
@@ -138,7 +177,9 @@ class OpenWeatherHandler:
                     'so2': pollution.get('so2'),
                     'co': pollution.get('co'),
                     'o3': pollution.get('o3'),
-                    'data_source': 'OpenWeather'
+                    'data_source': 'OpenWeather',
+                    'aqi_value': aqi,
+                    'quality': self._get_quality_label(aqi)
                 }
             return None
         
@@ -146,23 +187,106 @@ class OpenWeatherHandler:
             logger.error(f"Error parsing OpenWeather pollution data: {str(e)}")
             return None
     
-    def _parse_weather_data(self, data):
-        """Parse weather data from OpenWeather API"""
+    def _parse_weather_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Parse weather data from OpenWeather API
+        
+        Args:
+            data (Dict[str, Any]): Raw API response
+            
+        Returns:
+            Optional[Dict[str, Any]]: Parsed weather data
+        """
         try:
-            main = data['main']
-            wind = data['wind']
-            clouds = data['clouds']
+            main = data.get('main', {})
+            wind = data.get('wind', {})
+            clouds = data.get('clouds', {})
+            rain = data.get('rain', {})
+            sys = data.get('sys', {})
             
             return {
                 'timestamp': datetime.now(),
+                'city': data.get('name'),
                 'temperature': main.get('temp'),
+                'feels_like': main.get('feels_like'),
+                'temp_min': main.get('temp_min'),
+                'temp_max': main.get('temp_max'),
                 'humidity': main.get('humidity'),
+                'pressure': main.get('pressure'),
                 'wind_speed': wind.get('speed'),
-                'atmospheric_pressure': main.get('pressure'),
-                'precipitation': data.get('rain', {}).get('1h', 0),
-                'cloudiness': clouds.get('all')
+                'wind_direction': wind.get('deg'),
+                'cloudiness': clouds.get('all'),
+                'rain_1h': rain.get('1h', 0),
+                'rain_3h': rain.get('3h', 0),
+                'sunrise': datetime.fromtimestamp(sys.get('sunrise', 0)) if sys.get('sunrise') else None,
+                'sunset': datetime.fromtimestamp(sys.get('sunset', 0)) if sys.get('sunset') else None,
+                'visibility': data.get('visibility'),
+                'data_source': 'OpenWeather'
             }
         
         except Exception as e:
             logger.error(f"Error parsing OpenWeather weather data: {str(e)}")
             return None
+    
+    def fetch_data_batch(self, cities: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Fetch both weather and pollution data for multiple cities in batch
+        
+        Args:
+            cities (List[str]): List of city names
+            
+        Returns:
+            Dict[str, Dict[str, Any]]: Dictionary with city data
+        """
+        results = {}
+        
+        for city in cities:
+            try:
+                city_data = {
+                    'weather': None,
+                    'pollution': None
+                }
+                
+                # Get weather data
+                weather_data = self.fetch_weather_data(city)
+                if weather_data:
+                    city_data['weather'] = weather_data
+                
+                # Get pollution data if coordinates exist
+                coords = self.CITY_COORDINATES.get(city)
+                if coords:
+                    pollution_data = self.fetch_air_pollution_data(coords[0], coords[1])
+                    if pollution_data:
+                        city_data['pollution'] = pollution_data
+                
+                results[city] = city_data
+                
+            except Exception as e:
+                logger.error(f"Error fetching batch data for {city}: {str(e)}")
+                results[city] = {'weather': None, 'pollution': None}
+        
+        return results
+    
+    @staticmethod
+    def _get_quality_label(aqi: Optional[int]) -> str:
+        """
+        Get air quality label based on OpenWeather AQI value (1-5 scale)
+        
+        Args:
+            aqi (Optional[int]): AQI value from OpenWeather
+            
+        Returns:
+            str: Air quality label
+        """
+        if aqi is None:
+            return 'Unknown'
+            
+        labels = {
+            1: 'Good',
+            2: 'Fair',
+            3: 'Moderate',
+            4: 'Poor',
+            5: 'Very Poor'
+        }
+        
+        return labels.get(aqi, 'Unknown')
