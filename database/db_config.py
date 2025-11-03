@@ -1,22 +1,70 @@
-"""Database configuration settings"""
+import os
+import psycopg2
+from psycopg2 import pool
+import logging
+from dotenv import load_dotenv
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from config.settings import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+# Load environment variables
+load_dotenv()
 
-# Create database URL
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Create engine
-engine = create_engine(DATABASE_URL)
+class DatabaseManager:
+    _connection_pool = None
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    def __init__(self):
+        """Initialize database connection pool"""
+        if DatabaseManager._connection_pool is None:
+            try:
+                DatabaseManager._connection_pool = psycopg2.pool.SimpleConnectionPool(
+                    minconn=1,
+                    maxconn=10,
+                    host=os.getenv('DB_HOST', 'localhost'),
+                    database=os.getenv('DB_NAME', 'aqi_db'),
+                    user=os.getenv('DB_USER', 'postgres'),
+                    password=os.getenv('DB_PASSWORD'),
+                    port=os.getenv('DB_PORT', 5432)
+                )
+                logger.info("Database connection pool created successfully")
+            except Exception as e:
+                logger.error(f"Error creating connection pool: {str(e)}")
+                raise
 
-def get_db():
-    """Database session generator"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    def get_connection(self):
+        """Get a connection from the pool"""
+        return DatabaseManager._connection_pool.getconn()
+
+    def return_connection(self, connection):
+        """Return a connection to the pool"""
+        DatabaseManager._connection_pool.putconn(connection)
+
+    def execute_query(self, query, params=None):
+        """Execute a query and return results"""
+        connection = None
+        cursor = None
+        try:
+            connection = self.get_connection()
+            cursor = connection.cursor()
+            cursor.execute(query, params)
+            
+            # If the query returns results
+            if cursor.description:
+                results = cursor.fetchall()
+            else:
+                results = None
+            
+            connection.commit()
+            return results
+
+        except Exception as e:
+            if connection:
+                connection.rollback()
+            logger.error(f"Database error: {str(e)}")
+            raise
+
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                self.return_connection(connection)
