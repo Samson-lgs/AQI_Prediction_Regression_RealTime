@@ -133,7 +133,7 @@ class OpenWeatherHandler:
             Optional[Dict[str, Any]]: Parsed pollution data or None if failed
         """
         try:
-            url = f"{self.base_url}/data/2.5/air_pollution"
+            url = f"{self.base_url}/air_pollution"
             params = {
                 'lat': lat,
                 'lon': lon,
