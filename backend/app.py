@@ -3,14 +3,6 @@ import os
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-4. **Commit to Git**
-   ```bash
-   git add .
-   git commit -m "Step 9: Interactive frontend dashboard with visualizations"
-   git push origin main
-   ```
-
----
 from flask import Flask, render_template, send_from_directory
 from flask_cors import CORS
 from backend.routes import api_bp
