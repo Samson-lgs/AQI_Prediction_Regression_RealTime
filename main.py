@@ -10,6 +10,7 @@ from config.logging_config import setup_logger, get_city_logger, log_error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import os
+import sys
 
 # Set up main logger
 logger = setup_logger(
@@ -218,15 +219,22 @@ class DataCollectionPipeline:
 
 if __name__ == "__main__":
     pipeline = DataCollectionPipeline()
-    
+
     # Create database tables
     logger.info("Creating database tables...")
     pipeline.db.create_tables()
-    
-    # Run first collection immediately
+
+    # One-shot mode for CI/scheduled runs (e.g., GitHub Actions)
+    run_once = os.getenv("RUN_ONCE") == "1" or "--once" in sys.argv
+    if run_once:
+        logger.info("RUN_ONCE enabled; collecting data once and exiting...")
+        pipeline.collect_data_all_cities_parallel()
+        logger.info("One-shot collection complete. Exiting.")
+        sys.exit(0)
+
+    # Default behavior: initial collection then scheduler loop
     logger.info("Running initial data collection...")
     pipeline.collect_data_all_cities_parallel()
-    
-    # Schedule for hourly collection
+
     logger.info("Scheduling data collection...")
     pipeline.schedule_collection()
