@@ -43,26 +43,28 @@ class DataCollectionPipeline:
         start_time = time.time()
         
         with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
-            futures = []
+            # Create dictionaries to track futures and their metadata
+            futures_dict = {}
             
             # Submit priority cities (use all 3 APIs)
             logger.info(f"Submitting {len(self.priority_cities)} priority cities...")
             for city in self.priority_cities:
                 future = executor.submit(self.collect_priority_city_data, city)
-                futures.append((city, future, 'priority'))
+                futures_dict[future] = (city, 'priority')
             
             # Submit extended cities (use OpenWeather only)
             logger.info(f"Submitting {len(self.extended_cities)} extended cities...")
             for city in self.extended_cities:
                 future = executor.submit(self.collect_extended_city_data, city)
-                futures.append((city, future, 'extended'))
+                futures_dict[future] = (city, 'extended')
             
             # Wait for all to complete
             completed = 0
             failed = 0
             results = {'success': [], 'failed': []}
             
-            for city, future, city_type in as_completed(futures):
+            for future in as_completed(futures_dict.keys()):
+                city, city_type = futures_dict[future]
                 try:
                     result = future.result()
                     if result:
@@ -216,6 +218,10 @@ class DataCollectionPipeline:
 
 if __name__ == "__main__":
     pipeline = DataCollectionPipeline()
+    
+    # Create database tables
+    logger.info("Creating database tables...")
+    pipeline.db.create_tables()
     
     # Run first collection immediately
     logger.info("Running initial data collection...")

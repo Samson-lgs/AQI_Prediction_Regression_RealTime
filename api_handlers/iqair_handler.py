@@ -40,7 +40,7 @@ class IQAirHandler:
                 logger.warning(f"No coordinates found for {city}")
                 return None
                 
-            url = f"{self.base_url}/v2/nearest_city"
+            url = f"{self.base_url}/nearest_city"
             params = {
                 'lat': coords[0],
                 'lon': coords[1],
