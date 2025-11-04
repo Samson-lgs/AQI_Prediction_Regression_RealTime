@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Air Quality Index Prediction System</title>
+    <title>AQI Prediction System - 1-48 Hour Forecast</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header class="header">
-            <h1>🌍 Air Quality Index Prediction System</h1>
-            <p>Real-time AQI Forecasting for Indian Cities</p>
+            <h1>🌍 AQI Prediction System</h1>
+            <p>1-48 Hour Air Quality Forecasting for 56 Indian Cities</p>
         </header>
         
         <nav class="navbar">
@@ -19,54 +19,133 @@
                 <select id="citySelect" class="city-select">
                     <option value="">Select a city...</option>
                 </select>
-                <button id="refreshBtn" class="btn btn-primary">Refresh Data</button>
+                <select id="hoursSelect" class="hours-select">
+                    <option value="6">6 Hours Ahead</option>
+                    <option value="12">12 Hours Ahead</option>
+                    <option value="24" selected>24 Hours Ahead</option>
+                    <option value="48">48 Hours Ahead</option>
+                </select>
+                <button id="refreshBtn" class="btn btn-primary">Refresh Forecast</button>
             </div>
         </nav>
         
         <main class="main-content">
-            <section class="current-aqi">
+            <!-- Current AQI vs Predicted AQI Comparison -->
+            <section class="prediction-comparison">
                 <div class="card">
-                    <h2>Current AQI</h2>
-                    <div class="aqi-display">
-                        <div id="aqiValue" class="aqi-value">--</div>
-                        <div id="aqiStatus" class="aqi-status">--</div>
+                    <h2>📊 Current vs Predicted AQI</h2>
+                    <div class="comparison-grid">
+                        <div class="comparison-item current">
+                            <div class="label">Current AQI</div>
+                            <div id="currentAqiValue" class="value large">--</div>
+                            <div id="currentAqiStatus" class="status">--</div>
+                            <div class="timestamp" id="currentTimestamp">--</div>
+                        </div>
+                        <div class="comparison-arrow">→</div>
+                        <div class="comparison-item predicted">
+                            <div class="label">Predicted AQI (<span id="predictionHours">24</span>h)</div>
+                            <div id="predictedAqiValue" class="value large">--</div>
+                            <div id="predictedAqiStatus" class="status">--</div>
+                            <div class="confidence">Confidence: <span id="confidenceValue">--</span>%</div>
+                        </div>
                     </div>
+                    <div class="prediction-change">
+                        <div id="aqiChange" class="change-indicator">--</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 48-Hour Prediction Chart -->
+            <section class="charts-section">
+                <div class="card full-width">
+                    <h2>🔮 48-Hour AQI Prediction Forecast</h2>
+                    <div class="chart-controls">
+                        <label>
+                            <input type="checkbox" id="showHistorical" checked> Show Historical Data
+                        </label>
+                        <label>
+                            <input type="checkbox" id="showConfidence" checked> Show Confidence Interval
+                        </label>
+                    </div>
+                    <div id="forecastChart" class="chart large-chart"></div>
+                </div>
+            </section>
+
+            <!-- Pollutant Predictions -->
+            <section class="pollutants-section">
+                <div class="card">
+                    <h2>🧪 Current Pollutant Levels</h2>
                     <div class="pollutants-grid">
                         <div class="pollutant-item">
                             <span class="label">PM2.5</span>
                             <span id="pm25Value" class="value">--</span>
+                            <span class="unit">µg/m³</span>
                         </div>
                         <div class="pollutant-item">
                             <span class="label">PM10</span>
                             <span id="pm10Value" class="value">--</span>
+                            <span class="unit">µg/m³</span>
                         </div>
                         <div class="pollutant-item">
                             <span class="label">NO₂</span>
                             <span id="no2Value" class="value">--</span>
+                            <span class="unit">µg/m³</span>
                         </div>
                         <div class="pollutant-item">
                             <span class="label">SO₂</span>
                             <span id="so2Value" class="value">--</span>
+                            <span class="unit">µg/m³</span>
+                        </div>
+                        <div class="pollutant-item">
+                            <span class="label">CO</span>
+                            <span id="coValue" class="value">--</span>
+                            <span class="unit">µg/m³</span>
+                        </div>
+                        <div class="pollutant-item">
+                            <span class="label">O₃</span>
+                            <span id="o3Value" class="value">--</span>
+                            <span class="unit">µg/m³</span>
                         </div>
                     </div>
                 </div>
             </section>
-            
+
+            <!-- Hourly Predictions Table -->
+            <section class="hourly-predictions">
+                <div class="card">
+                    <h2>⏰ Hourly Predictions (Next 24 Hours)</h2>
+                    <div class="table-container">
+                        <table id="hourlyTable">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Predicted AQI</th>
+                                    <th>Category</th>
+                                    <th>Change</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hourlyTableBody">
+                                <tr><td colspan="4" class="no-data">Loading predictions...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Historical vs Predicted Comparison -->
             <section class="charts-section">
                 <div class="card">
-                    <h2>AQI Historical Trend (7 Days)</h2>
+                    <h2>📈 Historical AQI Trend (7 Days)</h2>
                     <div id="historicalChart" class="chart"></div>
-                </div>
-                
-                <div class="card">
-                    <h2>Forecast (48 Hours)</h2>
-                    <div id="forecastChart" class="chart"></div>
                 </div>
             </section>
             
             <section class="metrics-section">
                 <div class="card">
-                    <h2>Model Performance</h2>
+                    <h2>🎯 Prediction Model Performance</h2>
+                    <div class="model-selector">
+                        <label>Active Model: <strong id="activeModel">XGBoost</strong></label>
+                    </div>
                     <div id="metricsContainer" class="metrics-grid"></div>
                 </div>
             </section>
