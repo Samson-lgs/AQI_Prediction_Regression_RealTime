@@ -6,6 +6,7 @@ from ml_models.random_forest_model import RandomForestAQI
 from ml_models.xgboost_model import XGBoostAQI
 from ml_models.lstm_model import LSTMAQI
 from config.settings import CITIES
+from models.model_utils import ModelSelector
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +21,7 @@ class ModelTrainer:
             'xgboost': XGBoostAQI(),
             'lstm': LSTMAQI()
         }
+        self.selector = ModelSelector()
     
     def train_all_models(self, city):
         """Train all models for a city"""
@@ -55,6 +57,8 @@ class ModelTrainer:
         metrics_lr = self.models['linear_regression'].evaluate(X_test, y_test)
         results['linear_regression'] = metrics_lr
         self.models['linear_regression'].save_model(f"models/trained_models/{city}_lr.pkl")
+        if metrics_lr:
+            self.selector.save_performance(city, 'linear_regression', metrics_lr)
         
         # Random Forest
         logger.info("Training Random Forest...")
@@ -62,6 +66,8 @@ class ModelTrainer:
         metrics_rf = self.models['random_forest'].evaluate(X_test, y_test)
         results['random_forest'] = metrics_rf
         self.models['random_forest'].save_model(f"models/trained_models/{city}_rf.pkl")
+        if metrics_rf:
+            self.selector.save_performance(city, 'random_forest', metrics_rf)
         
         # XGBoost
         logger.info("Training XGBoost...")
@@ -69,6 +75,8 @@ class ModelTrainer:
         metrics_xgb = self.models['xgboost'].evaluate(X_test, y_test)
         results['xgboost'] = metrics_xgb
         self.models['xgboost'].save_model(f"models/trained_models/{city}_xgb.json")
+        if metrics_xgb:
+            self.selector.save_performance(city, 'xgboost', metrics_xgb)
         
         # LSTM
         logger.info("Training LSTM...")
@@ -79,6 +87,8 @@ class ModelTrainer:
         metrics_lstm = self.models['lstm'].evaluate(X_test_lstm, y_test_lstm)
         results['lstm'] = metrics_lstm
         self.models['lstm'].save_model(f"models/trained_models/{city}_lstm.h5")
+        if metrics_lstm:
+            self.selector.save_performance(city, 'lstm', metrics_lstm)
         
         logger.info(f"Training completed for {city}. Results: {results}")
         return results

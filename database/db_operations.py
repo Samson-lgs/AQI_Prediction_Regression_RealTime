@@ -252,3 +252,26 @@ class DatabaseOperations:
             self.db.execute_query(query, params)
         
         logger.info(f"Inserted {len(predictions_list)} predictions for all cities")
+
+        def get_model_performance(self, city: str, model_name: str | None = None, days: int = 30):
+                """Fetch model performance metrics for a city, optionally filtered by model_name, for recent days."""
+                if model_name:
+                        query = """
+                        SELECT city, model_name, metric_date, r2_score, rmse, mae, mape
+                        FROM model_performance
+                        WHERE city = %s AND model_name = %s
+                            AND metric_date >= CURRENT_DATE - %s
+                        ORDER BY metric_date DESC;
+                        """
+                        params = (city, model_name, days)
+                else:
+                        query = """
+                        SELECT city, model_name, metric_date, r2_score, rmse, mae, mape
+                        FROM model_performance
+                        WHERE city = %s
+                            AND metric_date >= CURRENT_DATE - %s
+                        ORDER BY metric_date DESC;
+                        """
+                        params = (city, days)
+
+                return self.db.execute_query_dicts(query, params)
