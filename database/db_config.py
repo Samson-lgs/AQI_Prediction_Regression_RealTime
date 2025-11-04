@@ -1,5 +1,6 @@
 import os
 import psycopg2
+from psycopg2.extras import RealDictCursor
 from psycopg2 import pool
 import logging
 from dotenv import load_dotenv
@@ -56,6 +57,36 @@ class DatabaseManager:
             
             connection.commit()
             return results
+
+        except Exception as e:
+            if connection:
+                connection.rollback()
+            logger.error(f"Database error: {str(e)}")
+            raise
+
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                self.return_connection(connection)
+
+    def execute_query_dicts(self, query, params=None):
+        """Execute a query and return list of dicts (column names as keys)."""
+        connection = None
+        cursor = None
+        try:
+            connection = self.get_connection()
+            cursor = connection.cursor(cursor_factory=RealDictCursor)
+            cursor.execute(query, params)
+
+            if cursor.description:
+                results = cursor.fetchall()  # returns list of RealDictRow (dict-like)
+            else:
+                results = None
+
+            connection.commit()
+            # Convert to plain dicts for DataFrame compatibility
+            return [dict(r) for r in results] if results is not None else None
 
         except Exception as e:
             if connection:
