@@ -1,0 +1,50 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: aqi-db
+    env: docker
+    plan: free
+    databases:
+      - name: aqi_db
+        databaseName: aqi_db
+        user: aqi_user
+
+  # Backend Web Service
+  - type: web
+    name: aqi-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "./render-build.sh"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT backend.app:create_app()"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aqi-db
+          property: connectionString
+      - key: DB_NAME
+        value: aqi_db
+      - key: DB_USER
+        value: aqi_user
+      - key: DB_PASSWORD
+        generateValue: true
+      - key: DB_HOST
+        fromDatabase:
+          name: aqi-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: aqi-db
+          property: port
+      - key: OPENWEATHER_API_KEY
+        value: 528f129d20a5e514729cbf24b2449e44
+      - key: IQAIR_API_KEY
+        value: 102c31e0-0f3c-4865-b4f3-2b4a57e78c40
+      - key: CPCB_API_KEY
+        value: 579b464db66ec23bdd000001eed35a78497b4993484cd437724fd5dd
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: 0

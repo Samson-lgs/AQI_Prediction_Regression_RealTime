@@ -9,8 +9,10 @@ from backend.routes import api_bp
 from config.settings import CITIES
 import logging
 
+# Configure logging based on environment
+log_level = logging.DEBUG if os.getenv('FLASK_DEBUG', '0') == '1' else logging.INFO
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
