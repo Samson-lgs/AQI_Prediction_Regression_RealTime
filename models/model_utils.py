@@ -2,7 +2,7 @@
 
 import joblib
 import os
-from typing import Any
+from typing import Any, Optional, Dict
 import logging
 from datetime import datetime
 import numpy as np
@@ -50,7 +50,7 @@ class ModelSelector:
         self.db = DatabaseManager()
         self.model_performances = {}
 
-    def save_performance(self, city: str, model_name: str, metrics: dict) -> None:
+    def save_performance(self, city: str, model_name: str, metrics: Dict) -> None:
         """Save model performance to database"""
         try:
             query = """
@@ -92,7 +92,7 @@ class ModelSelector:
             logger.error(f"Error getting best model: {str(e)}")
             return 'xgboost'
 
-    def ensemble_prediction(self, predictions_dict: dict, weights: dict | None = None):
+    def ensemble_prediction(self, predictions_dict: Dict, weights: Optional[Dict] = None):
         """Combine predictions from multiple models using weighted average"""
         try:
             if not predictions_dict:
