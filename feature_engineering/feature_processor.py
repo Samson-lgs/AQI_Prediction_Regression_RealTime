@@ -157,22 +157,41 @@ class FeatureProcessor:
         # Fetch raw data
         df = self.get_training_data(city, days)
         if df is None or df.empty:
+            logger.warning(f"No raw data found for {city}")
             return None
+        
+        logger.info(f"Fetched {len(df)} raw data rows for {city}")
         
         # Handle missing values
         df = self.handle_missing_values(df)
+        if df is None or df.empty:
+            logger.warning(f"Data became empty after handling missing values")
+            return None
         
         # Detect outliers
         df = self.detect_outliers(df)
+        if df is None or df.empty:
+            logger.warning(f"Data became empty after outlier detection")
+            return None
         
         # Create features
         df = self.create_features(df)
+        if df is None or df.empty:
+            logger.warning(f"Data became empty after feature creation")
+            return None
         
         # Remove rows with NaN values created by lag features
         df = df.dropna()
         
+        if df.empty:
+            logger.warning(f"Not enough data for {city}. Need at least 24 hours of continuous data for lag features. Found only {len(df)} rows after dropna.")
+            return None
+        
         # Normalize features
         df = self.normalize_features(df, fit=True)
+        if df is None or df.empty:
+            logger.warning(f"Data became empty after normalization")
+            return None
         
         logger.info(f"Training data ready: {len(df)} rows, {len(df.columns)} columns")
         return df
