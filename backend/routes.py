@@ -1,59 +1,115 @@
-from flask import Blueprint, jsonify
-from ml_models.linear_regression_model import LinearRegressionAQI
-from ml_models.random_forest_model import RandomForestAQI
-from ml_models.xgboost_model import XGBoostAQI
-from ml_models.lstm_model import LSTMAQI
-from models.model_utils import ModelSelector
-from database.db_operations import DatabaseOperations
+from flask import Blueprint, jsonify, request
+from datetime import datetime, timedelta
 import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
-api_bp = Blueprint('api', __name__, url_prefix='/api')
-db = DatabaseOperations()
-selector = ModelSelector()
+api_bp = Blueprint('api', __name__, url_prefix='/api/v1')
 
-# Lazy instances; models will be loaded per request
-lr_model = LinearRegressionAQI()
-rf_model = RandomForestAQI()
-xgb_model = XGBoostAQI()
-lstm_model = LSTMAQI()
+@api_bp.route('/cities', methods=['GET'])
+def get_cities():
+    """Get list of supported cities"""
+    from config.settings import CITIES
+    return jsonify({'cities': CITIES}), 200
 
-@api_bp.route('/predict/<city>', methods=['GET'])
-def predict(city):
-    """Get prediction for a city by loading the best model (sanity check endpoint)."""
+@api_bp.route('/aqi/current/<city>', methods=['GET'])
+def get_current_aqi(city):
+    """Get current AQI for a city"""
     try:
-        best_model_name = selector.get_best_model(city)
-
-        # Load best model
-        if best_model_name == 'linear_regression':
-            model = lr_model
-            model.load_model(f"models/trained_models/{city}_lr.pkl")
-        elif best_model_name == 'random_forest':
-            model = rf_model
-            model.load_model(f"models/trained_models/{city}_rf.pkl")
-        elif best_model_name == 'xgboost':
-            model = xgb_model
-            model.load_model(f"models/trained_models/{city}_xgb.json")
-        elif best_model_name == 'lstm':
-            model = lstm_model
-            model.load_model(f"models/trained_models/{city}_lstm.h5")
+        from database.db_operations import DatabaseOperations
+        db = DatabaseOperations()
+        
+        end_date = datetime.now()
+        start_date = end_date - timedelta(hours=1)
+        
+        data = db.get_pollution_data(city, start_date, end_date)
+        
+        if data:
+            latest = data[-1]  # Most recent
+            return jsonify({
+                'city': city,
+                'timestamp': str(latest['timestamp']),
+                'aqi': latest['aqi_value'],
+                'pm25': latest['pm25'],
+                'pm10': latest['pm10'],
+                'no2': latest['no2'],
+                'so2': latest['so2'],
+                'co': latest['co'],
+                'o3': latest['o3']
+            }), 200
         else:
-            return jsonify({'error': f"Unknown model '{best_model_name}' for city {city}"}), 404
-
-        return jsonify({"city": city, "model": best_model_name, "status": "Model loaded successfully"}), 200
+            return jsonify({'error': f'No data for {city}'}), 404
+    
     except Exception as e:
-        logger.error(f"Error in prediction: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@api_bp.route('/performance/<city>', methods=['GET'])
-def get_performance(city):
-    """Get model performance for a city for the last 30 days (default)."""
+@api_bp.route('/aqi/history/<city>', methods=['GET'])
+def get_aqi_history(city):
+    """Get AQI history for a city"""
     try:
-        result = db.get_model_performance(city, None, days=30)
-        return jsonify(result or []), 200
+        from database.db_operations import DatabaseOperations
+        db = DatabaseOperations()
+        
+        days = request.args.get('days', 7, type=int)
+        
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        data = db.get_pollution_data(city, start_date, end_date)
+        
+        if data:
+            return jsonify({
+                'city': city,
+                'data': data
+            }), 200
+        else:
+            return jsonify({'error': f'No data for {city}'}), 404
+    
     except Exception as e:
-        logger.error(f"Error getting performance: {str(e)}")
+        logger.error(f"Error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/forecast/<city>', methods=['GET'])
+def get_forecast(city):
+    """Get AQI forecast for a city"""
+    try:
+        from models.model_utils import ModelSelector
+        selector = ModelSelector()
+        
+        best_model = selector.get_best_model(city)
+        
+        return jsonify({
+            'city': city,
+            'best_model': best_model,
+            'forecast_hours': 48,
+            'status': 'Forecast model ready'
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/metrics/<city>', methods=['GET'])
+def get_metrics(city):
+    """Get model metrics for a city"""
+    try:
+        from database.db_operations import DatabaseOperations
+        db = DatabaseOperations()
+        
+        model_name = request.args.get('model', 'xgboost')
+        
+        metrics = db.get_model_performance(city, model_name, days=30)
+        
+        return jsonify({
+            'city': city,
+            'model': model_name,
+            'metrics': metrics
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/health', methods=['GET'])
