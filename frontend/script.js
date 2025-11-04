@@ -1,6 +1,7 @@
-const API_BASE_URL = '/api/v1';
-let currentCity = '';
-let predictionHours = 24;
+// Use config.js for API URL (falls back to local if config not loaded)
+const API_BASE_URL = typeof config !== 'undefined' ? config.API_BASE_URL : '/api/v1';
+let currentCity = typeof config !== 'undefined' ? config.DEFAULT_CITY : 'Delhi';
+let predictionHours = typeof config !== 'undefined' ? config.FORECAST_HOURS / 2 : 24; // Default to 24 hours
 let currentAQIData = null;
 
 document.addEventListener('DOMContentLoaded', function() {

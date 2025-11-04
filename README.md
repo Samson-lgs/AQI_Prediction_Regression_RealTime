@@ -216,9 +216,34 @@ curl http://localhost:5000/api/v1/forecast/Bangalore
 
 Delhi, Mumbai, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad, Jaipur, Lucknow, Kanpur, Nagpur, Indore, Bhopal, Visakhapatnam, Patna, Vadodara, Ludhiana, Agra, Nashik, Faridabad, Meerut, Rajkot, Varanasi, Srinagar, Amritsar, Allahabad, Ranchi, Howrah, Jabalpur, Gwalior, Vijayawada, Jodhpur, Madurai, Raipur, Kota, Chandigarh, Guwahati, Solapur, Hubli, Mysore, Tiruchirappalli, Bareilly, Aligarh, Moradabad, Jalandhar, Bhubaneswar, Salem, Warangal, Guntur, Bhiwandi, Saharanpur, Gorakhpur, Bikaner, Amravati, Noida
 
-## Docker Deployment
+## Deployment Options
 
-### Using Docker Compose:
+### Option 1: Render.com (Recommended for Production)
+
+**Separate services architecture with GitHub Actions for scheduling:**
+
+1. **Deploy to Render:**
+   - See [RENDER_DEPLOYMENT.md](RENDER_DEPLOYMENT.md) for detailed instructions
+   - See [QUICK_DEPLOY_GUIDE.md](QUICK_DEPLOY_GUIDE.md) for quick start
+   - Uses Render Blueprint for automated deployment
+   - Separate services: Database, Backend API, Frontend
+
+2. **Setup GitHub Actions:**
+   - See [GITHUB_ACTIONS_SETUP.md](GITHUB_ACTIONS_SETUP.md) for complete guide
+   - Configure repository secrets (database credentials)
+   - Automated hourly data collection
+   - Automated daily model training
+   - Free tier: 2000 minutes/month
+
+**Services:**
+- **Database**: PostgreSQL on Render (free tier, 256MB RAM)
+- **Backend API**: Flask + Gunicorn on Render (free tier, 512MB RAM)
+- **Frontend**: Static site on Render (free tier, always on)
+- **Scheduler**: GitHub Actions (free tier, 2000 min/month)
+
+**Total Cost**: $0/month (all free tiers!)
+
+### Option 2: Docker Compose (Local/Development)
 
 1. **Build and start:**
 ```bash
@@ -234,7 +259,7 @@ docker exec aqi-prediction-system-web-1 python database/reset_db.py
 - Frontend: http://localhost:5000
 - API: http://localhost:5000/api/v1
 
-### Stop containers:
+4. **Stop containers:**
 ```bash
 docker-compose down
 ```
