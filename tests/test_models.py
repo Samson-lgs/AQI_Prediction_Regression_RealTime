@@ -2,10 +2,10 @@
 
 import unittest
 import numpy as np
-from ml_models.linear_regression_model import AQILinearRegression
-from ml_models.random_forest_model import AQIRandomForest
-from ml_models.xgboost_model import AQIXGBoost
-from ml_models.lstm_model import AQILSTM
+from ml_models.linear_regression_model import LinearRegressionAQI
+from ml_models.random_forest_model import RandomForestAQI
+from ml_models.xgboost_model import XGBoostAQI
+from ml_models.lstm_model import LSTMAQI
 
 class TestModels(unittest.TestCase):
     def setUp(self):
@@ -17,7 +17,7 @@ class TestModels(unittest.TestCase):
         self.y_test = np.random.rand(20)
         
     def test_linear_regression(self):
-        model = AQILinearRegression()
+        model = LinearRegressionAQI()
         model.train(self.X, self.y)
         predictions = model.predict(self.X_test)
         rmse, r2 = model.evaluate(self.X_test, self.y_test)
@@ -27,7 +27,7 @@ class TestModels(unittest.TestCase):
         self.assertIsInstance(r2, float)
         
     def test_random_forest(self):
-        model = AQIRandomForest()
+        model = RandomForestAQI()
         model.train(self.X, self.y)
         predictions = model.predict(self.X_test)
         rmse, r2 = model.evaluate(self.X_test, self.y_test)
@@ -37,7 +37,7 @@ class TestModels(unittest.TestCase):
         self.assertIsInstance(r2, float)
         
     def test_xgboost(self):
-        model = AQIXGBoost()
+        model = XGBoostAQI()
         model.train(self.X, self.y)
         predictions = model.predict(self.X_test)
         rmse, r2 = model.evaluate(self.X_test, self.y_test)
@@ -49,7 +49,7 @@ class TestModels(unittest.TestCase):
     def test_lstm(self):
         sequence_length = 10
         n_features = 5
-        model = AQILSTM(sequence_length, n_features)
+        model = LSTMAQI(sequence_length, n_features)
         
         # Reshape data for LSTM
         X_lstm = np.random.rand(100, sequence_length, n_features)
