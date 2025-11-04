@@ -1,37 +1,178 @@
-"""Feature processing for AQI prediction"""
-
 import pandas as pd
 import numpy as np
+from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from typing import Tuple, List
-from config.settings import FEATURE_SCALING, ROLLING_WINDOW
+from database.db_operations import DatabaseOperations
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class FeatureProcessor:
     def __init__(self):
-        self.scaler = StandardScaler() if FEATURE_SCALING == "standard" else MinMaxScaler()
-        self.rolling_window = ROLLING_WINDOW
+        self.db = DatabaseOperations()
+        self.scaler_features = StandardScaler()
+        self.scaler_target = MinMaxScaler(feature_range=(0, 500))
     
-    def process_features(self, data: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
-        """
-        Process and engineer features for AQI prediction
-        
-        Args:
-            data: Raw data DataFrame
+    def get_training_data(self, city, days=90):
+        """Get historical data for training"""
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
             
-        Returns:
-            Tuple containing processed features and feature names
-        """
-        # Add rolling statistics
-        data['aqi_rolling_mean'] = data['aqi'].rolling(window=self.rolling_window).mean()
-        data['aqi_rolling_std'] = data['aqi'].rolling(window=self.rolling_window).std()
+            pollution_data = self.db.get_pollution_data(
+                city, start_date, end_date
+            )
+            
+            if not pollution_data:
+                logger.warning(f"No data found for {city}")
+                return None
+            
+            df = pd.DataFrame(pollution_data)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df = df.sort_values('timestamp').reset_index(drop=True)
+            
+            return df
         
-        # Add time-based features
-        data['hour'] = data.index.hour
-        data['day_of_week'] = data.index.dayofweek
-        data['month'] = data.index.month
+        except Exception as e:
+            logger.error(f"Error fetching training data: {str(e)}")
+            return None
+    
+    def create_features(self, df):
+        """Create temporal and derived features"""
+        try:
+            df = df.copy()
+            
+            # Temporal features
+            df['hour'] = df['timestamp'].dt.hour
+            df['day_of_week'] = df['timestamp'].dt.dayofweek
+            df['month'] = df['timestamp'].dt.month
+            df['quarter'] = df['timestamp'].dt.quarter
+            df['day_of_year'] = df['timestamp'].dt.dayofyear
+            
+            # Cyclical encoding for hour
+            df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
+            df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
+            
+            # Cyclical encoding for day of week
+            df['dow_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7)
+            df['dow_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7)
+            
+            # Derived features
+            df['pollutant_ratio'] = df['pm25'] / (df['pm10'] + 0.1)
+            df['no2_so2_ratio'] = df['no2'] / (df['so2'] + 0.1)
+            
+            # Moving averages (lag features)
+            for window in [3, 6, 12, 24]:
+                df[f'pm25_ma_{window}'] = df['pm25'].rolling(
+                    window=window, min_periods=1
+                ).mean()
+                df[f'pm10_ma_{window}'] = df['pm10'].rolling(
+                    window=window, min_periods=1
+                ).mean()
+                df[f'no2_ma_{window}'] = df['no2'].rolling(
+                    window=window, min_periods=1
+                ).mean()
+            
+            # Lag features
+            for lag in [1, 6, 12, 24]:
+                df[f'pm25_lag_{lag}'] = df['pm25'].shift(lag)
+                df[f'pm10_lag_{lag}'] = df['pm10'].shift(lag)
+                df[f'aqi_lag_{lag}'] = df['aqi_value'].shift(lag)
+            
+            logger.info("Features created successfully")
+            return df
         
-        # Scale numerical features
-        numerical_features = ['temperature', 'humidity', 'wind_speed', 'aqi_rolling_mean', 'aqi_rolling_std']
-        data[numerical_features] = self.scaler.fit_transform(data[numerical_features])
+        except Exception as e:
+            logger.error(f"Error creating features: {str(e)}")
+            return None
+    
+    def handle_missing_values(self, df):
+        """Handle missing values with imputation"""
+        try:
+            df = df.copy()
+            
+            # Forward fill then backward fill for time-series
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            
+            for col in numeric_cols:
+                df[col] = df[col].fillna(method='ffill').fillna(method='bfill')
+                
+                # If still NaN, fill with mean
+                df[col] = df[col].fillna(df[col].mean())
+            
+            logger.info("Missing values handled")
+            return df
         
-        return data, numerical_features
+        except Exception as e:
+            logger.error(f"Error handling missing values: {str(e)}")
+            return None
+    
+    def detect_outliers(self, df, threshold=3):
+        """Detect and handle outliers using Z-score"""
+        try:
+            df = df.copy()
+            numeric_cols = ['pm25', 'pm10', 'no2', 'so2', 'co', 'o3', 'aqi_value']
+            
+            for col in numeric_cols:
+                if col in df.columns:
+                    z_scores = np.abs((df[col] - df[col].mean()) / df[col].std())
+                    # Cap outliers instead of removing
+                    df.loc[z_scores > threshold, col] = df[col].quantile(0.95)
+            
+            logger.info("Outliers handled")
+            return df
+        
+        except Exception as e:
+            logger.error(f"Error detecting outliers: {str(e)}")
+            return None
+    
+    def normalize_features(self, df, fit=True):
+        """Normalize features to standard scale"""
+        try:
+            df = df.copy()
+            feature_cols = [col for col in df.columns 
+                           if col not in ['timestamp', 'city', 'data_source', 'id', 'created_at']]
+            
+            if fit:
+                df[feature_cols] = self.scaler_features.fit_transform(
+                    df[feature_cols].fillna(0)
+                )
+            else:
+                df[feature_cols] = self.scaler_features.transform(
+                    df[feature_cols].fillna(0)
+                )
+            
+            logger.info("Features normalized")
+            return df
+        
+        except Exception as e:
+            logger.error(f"Error normalizing features: {str(e)}")
+            return None
+    
+    def prepare_training_data(self, city, days=90):
+        """Complete preprocessing pipeline"""
+        logger.info(f"Preparing training data for {city}")
+        
+        # Fetch raw data
+        df = self.get_training_data(city, days)
+        if df is None or df.empty:
+            return None
+        
+        # Handle missing values
+        df = self.handle_missing_values(df)
+        
+        # Detect outliers
+        df = self.detect_outliers(df)
+        
+        # Create features
+        df = self.create_features(df)
+        
+        # Remove rows with NaN values created by lag features
+        df = df.dropna()
+        
+        # Normalize features
+        df = self.normalize_features(df, fit=True)
+        
+        logger.info(f"Training data ready: {len(df)} rows, {len(df.columns)} columns")
+        return df

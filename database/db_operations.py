@@ -179,13 +179,14 @@ class DatabaseOperations:
         return self.db.execute_query(query, params)
     
     def get_pollution_data(self, city, start_date, end_date):
-        """Get pollution data for a city in date range"""
+        """Get pollution data for a city in date range as list of dicts"""
         query = """
-        SELECT * FROM pollution_data 
+        SELECT id, city, timestamp, pm25, pm10, no2, so2, co, o3, aqi_value, data_source, created_at
+        FROM pollution_data 
         WHERE city = %s AND timestamp BETWEEN %s AND %s
         ORDER BY timestamp DESC;
         """
-        return self.db.execute_query(query, (city, start_date, end_date))
+        return self.db.execute_query_dicts(query, (city, start_date, end_date))
     
     def get_all_cities_current_data(self):
         """Get current data for ALL cities (latest reading per city)"""
