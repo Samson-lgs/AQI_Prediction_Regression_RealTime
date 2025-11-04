@@ -1,14 +1,10 @@
-services:
-  # PostgreSQL Database
-  - type: pserv
-    name: aqi-db
-    env: docker
+databases:
+  - name: aqi-db
+    databaseName: aqi_db
+    user: aqi_user
     plan: free
-    databases:
-      - name: aqi_db
-        databaseName: aqi_db
-        user: aqi_user
 
+services:
   # Backend Web Service
   - type: web
     name: aqi-backend
