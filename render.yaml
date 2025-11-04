@@ -11,7 +11,6 @@ services:
     name: aqi-backend-api
     env: python
     region: oregon
-    plan: free
     buildCommand: "./render-build.sh"
     startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 backend.app:create_app()"
     envVars:
@@ -53,7 +52,6 @@ services:
   - type: web
     name: aqi-frontend
     env: static
-    plan: free
     buildCommand: "echo 'No build needed for static site'"
     staticPublishPath: ./frontend
     routes:
