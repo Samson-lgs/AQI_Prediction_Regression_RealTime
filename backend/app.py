@@ -28,13 +28,13 @@ def create_app():
     def index():
         return send_from_directory('../frontend', 'index.html')
     
-    @app.route('/css/<path:path>')
-    def send_css(path):
-        return send_from_directory('../frontend', path)
+    @app.route('/styles.css')
+    def send_styles():
+        return send_from_directory('../frontend', 'styles.css')
     
-    @app.route('/js/<path:path>')
-    def send_js(path):
-        return send_from_directory('../frontend', path)
+    @app.route('/script.js')
+    def send_script():
+        return send_from_directory('../frontend', 'script.js')
     
     @app.errorhandler(404)
     def not_found(error):

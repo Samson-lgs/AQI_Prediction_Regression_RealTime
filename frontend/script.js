@@ -7,13 +7,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function initializeApp() {
     try {
+        console.log('Initializing AQI Dashboard...');
+        
         // Load cities
         const cities = await fetchCities();
+        console.log('Cities loaded:', cities.length);
+        
+        if (cities.length === 0) {
+            showError('No cities available. Please check if the backend is running and data is collected.');
+            return;
+        }
+        
         populateCitySelect(cities);
         
         // Set default city
         if (cities.length > 0) {
             currentCity = cities[0];
+            console.log('Setting default city:', currentCity);
             document.getElementById('citySelect').value = currentCity;
             await loadCityData(currentCity);
         }
@@ -21,27 +31,46 @@ async function initializeApp() {
         // Event listeners
         document.getElementById('citySelect').addEventListener('change', async (e) => {
             currentCity = e.target.value;
+            console.log('City changed to:', currentCity);
             if (currentCity) {
                 await loadCityData(currentCity);
             }
         });
         
         document.getElementById('refreshBtn').addEventListener('click', async () => {
+            console.log('Refresh clicked for city:', currentCity);
             if (currentCity) {
                 await loadCityData(currentCity);
             }
         });
+        
+        console.log('App initialized successfully!');
     } catch (error) {
         console.error('Error initializing app:', error);
-        showError('Failed to initialize application');
+        showError('Failed to initialize application: ' + error.message);
     }
 }
 
 async function fetchCities() {
     try {
+        console.log('Fetching cities from API...');
         const response = await fetch(`${API_BASE_URL}/cities`);
+        
+        if (!response.ok) {
+            console.error('API response not OK:', response.status, response.statusText);
+            return [];
+        }
+        
         const data = await response.json();
-        return data.cities;
+        console.log('Fetched cities data:', data);
+        
+        if (data && data.cities && Array.isArray(data.cities)) {
+            console.log('Number of cities:', data.cities.length);
+            return data.cities;
+        } else {
+            console.error('Invalid cities data format:', data);
+            return [];
+        }
     } catch (error) {
         console.error('Error fetching cities:', error);
         return [];
@@ -50,12 +79,32 @@ async function fetchCities() {
 
 function populateCitySelect(cities) {
     const select = document.getElementById('citySelect');
-    cities.forEach(city => {
-        const option = document.createElement('option');
-        option.value = city;
-        option.textContent = city;
-        select.appendChild(option);
+    
+    if (!select) {
+        console.error('City select element not found!');
+        return;
+    }
+    
+    console.log('Populating city select with', cities.length, 'cities');
+    
+    // Clear existing options except the first one (placeholder)
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+    
+    cities.forEach((city, index) => {
+        try {
+            const option = document.createElement('option');
+            option.value = city;
+            option.textContent = city;
+            select.appendChild(option);
+            console.log(`Added city ${index + 1}:`, city);
+        } catch (error) {
+            console.error('Error adding city option:', city, error);
+        }
     });
+    
+    console.log('City select populated. Total options:', select.options.length);
 }
 
 async function loadCityData(city) {
