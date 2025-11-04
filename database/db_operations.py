@@ -252,26 +252,45 @@ class DatabaseOperations:
             self.db.execute_query(query, params)
         
         logger.info(f"Inserted {len(predictions_list)} predictions for all cities")
-
-        def get_model_performance(self, city: str, model_name: str | None = None, days: int = 30):
-                """Fetch model performance metrics for a city, optionally filtered by model_name, for recent days."""
-                if model_name:
-                        query = """
-                        SELECT city, model_name, metric_date, r2_score, rmse, mae, mape
-                        FROM model_performance
-                        WHERE city = %s AND model_name = %s
-                            AND metric_date >= CURRENT_DATE - %s
-                        ORDER BY metric_date DESC;
-                        """
-                        params = (city, model_name, days)
-                else:
-                        query = """
-                        SELECT city, model_name, metric_date, r2_score, rmse, mae, mape
-                        FROM model_performance
-                        WHERE city = %s
-                            AND metric_date >= CURRENT_DATE - %s
-                        ORDER BY metric_date DESC;
-                        """
-                        params = (city, days)
-
-                return self.db.execute_query_dicts(query, params)
+    
+    def get_model_performance(self, city: str, model_name: str = None, days: int = 30):
+        """Fetch model performance metrics for a city, optionally filtered by model_name, for recent days."""
+        if model_name:
+            query = """
+            SELECT city, model_name, metric_date, r2_score, rmse, mae, mape
+            FROM model_performance
+            WHERE city = %s AND model_name = %s
+                AND metric_date >= CURRENT_DATE - %s
+            ORDER BY metric_date DESC;
+            """
+            params = (city, model_name, days)
+        else:
+            query = """
+            SELECT city, model_name, metric_date, r2_score, rmse, mae, mape
+            FROM model_performance
+            WHERE city = %s
+                AND metric_date >= CURRENT_DATE - %s
+            ORDER BY metric_date DESC;
+            """
+            params = (city, days)
+        
+        return self.db.execute_query_dicts(query, params)
+    
+    def insert_model_performance(self, city: str, model_name: str, metrics: dict, metric_date=None):
+        """Insert or update model performance metrics"""
+        if metric_date is None:
+            metric_date = datetime.now().date()
+        
+        query = """
+        INSERT INTO model_performance 
+        (city, model_name, metric_date, r2_score, rmse, mae, mape)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (city, model_name, metric_date) DO UPDATE
+        SET r2_score=EXCLUDED.r2_score, rmse=EXCLUDED.rmse, 
+            mae=EXCLUDED.mae, mape=EXCLUDED.mape;
+        """
+        params = (city, model_name, metric_date, 
+                 metrics.get('r2_score'), metrics.get('rmse'),
+                 metrics.get('mae'), metrics.get('mape'))
+        
+        return self.db.execute_query(query, params)
