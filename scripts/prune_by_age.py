@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import psycopg2
+import psycopg2.extensions
 
 
 def log(msg: str):
@@ -29,14 +30,19 @@ def delete_older_than(conn, table: str, col: str, is_date: bool, days: int) -> i
 
 
 def maybe_vacuum(conn, full: bool = False):
-    with conn.cursor() as cur:
-        if full:
-            log("Running VACUUM FULL (may lock tables)...")
-            cur.execute("VACUUM FULL")
-        else:
-            log("Running VACUUM (ANALYZE)...")
-            cur.execute("VACUUM (ANALYZE)")
-    conn.commit()
+    # VACUUM must run outside a transaction block
+    old_isolation = conn.isolation_level
+    conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+    try:
+        with conn.cursor() as cur:
+            if full:
+                log("Running VACUUM FULL (may lock tables)...")
+                cur.execute("VACUUM FULL")
+            else:
+                log("Running VACUUM (ANALYZE)...")
+                cur.execute("VACUUM (ANALYZE)")
+    finally:
+        conn.set_isolation_level(old_isolation)
 
 
 def main():
