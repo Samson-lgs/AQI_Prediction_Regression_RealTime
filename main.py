@@ -151,6 +151,11 @@ class DataCollectionPipeline:
                 coords = self.openweather.CITY_COORDINATES.get(city)
                 if not coords and weather_data and weather_data.get('lat') and weather_data.get('lon'):
                     coords = (weather_data['lat'], weather_data['lon'])
+                # Fallback: geocode if still no coords
+                if not coords:
+                    gc = self.openweather.geocode_city(city)
+                    if gc:
+                        coords = gc
 
                 # Pollution data if we have coordinates
                 if coords:
@@ -194,6 +199,11 @@ class DataCollectionPipeline:
             coords = self.openweather.CITY_COORDINATES.get(city)
             if not coords and weather_data and weather_data.get('lat') and weather_data.get('lon'):
                 coords = (weather_data['lat'], weather_data['lon'])
+            # Fallback: geocode if still no coords
+            if not coords:
+                gc = self.openweather.geocode_city(city)
+                if gc:
+                    coords = gc
 
             # Pollution data
             if coords:

@@ -115,8 +115,30 @@ class OpenWeatherHandler:
             return self._parse_weather_data(data)
         
         except requests.exceptions.RequestException as e:
-            logger.error(f"OpenWeather API error for weather data in {city}: {str(e)}")
-            return None
+            logger.warning(f"OpenWeather city name lookup failed for {city}: {str(e)}. Attempting geocode fallback...")
+            # Fallback: try geocoding the city name to get lat/lon
+            try:
+                coords = self.geocode_city(city)
+                if coords:
+                    lat, lon = coords
+                    weather_url = 'https://api.openweathermap.org/data/2.5/weather'
+                    params = {
+                        'lat': lat,
+                        'lon': lon,
+                        'appid': self.api_key,
+                        'units': 'metric'
+                    }
+                    response = requests.get(weather_url, params=params, timeout=self.timeout)
+                    response.raise_for_status()
+                    data = response.json()
+                    logger.debug(f"OpenWeather weather data fetched by coords for {city} ({lat},{lon})")
+                    return self._parse_weather_data(data)
+                else:
+                    logger.error(f"Geocoding returned no results for {city}")
+                    return None
+            except Exception as ge:
+                logger.error(f"OpenWeather geocode/weather fallback failed for {city}: {str(ge)}")
+                return None
         except Exception as e:
             logger.error(f"Unexpected error fetching weather data for {city}: {str(e)}")
             return None
@@ -152,6 +174,31 @@ class OpenWeatherHandler:
             return None
         except Exception as e:
             logger.error(f"Unexpected error fetching pollution data: {str(e)}")
+            return None
+
+    def geocode_city(self, city: str) -> Optional[Tuple[float, float]]:
+        """
+        Use OpenWeather Geo API to translate a city name into coordinates.
+        Returns (lat, lon) or None.
+        """
+        try:
+            url = 'https://api.openweathermap.org/geo/1.0/direct'
+            params = {
+                'q': f"{city},IN",
+                'limit': 1,
+                'appid': self.api_key
+            }
+            response = requests.get(url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            results = response.json() or []
+            if len(results) > 0:
+                lat = results[0].get('lat')
+                lon = results[0].get('lon')
+                if lat is not None and lon is not None:
+                    return (lat, lon)
+            return None
+        except Exception as e:
+            logger.error(f"Geocoding error for {city}: {str(e)}")
             return None
     
     def _parse_pollution_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
