@@ -127,16 +127,25 @@ const useStore = create((set, get) => ({
     if (socket) return;
     
     socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
     });
     
     socket.on('connect', () => {
-      console.log('WebSocket connected');
-      set({ connected: true });
+      console.log('✅ WebSocket connected');
+      set({ connected: true, error: null });
     });
     
-    socket.on('disconnect', () => {
-      console.log('WebSocket disconnected');
+    socket.on('connect_error', (error) => {
+      console.log('⚠️ WebSocket connection error:', error.message);
+      set({ connected: false });
+    });
+    
+    socket.on('disconnect', (reason) => {
+      console.log('❌ WebSocket disconnected:', reason);
       set({ connected: false });
     });
     
