@@ -19,17 +19,7 @@ logger = logging.getLogger(__name__)
 
 def create_app():
     app = Flask(__name__)
-    # Enable CORS for frontend (allow Render frontend origin explicitly and GET/OPTIONS)
-    frontend_origin = os.getenv('FRONTEND_ORIGIN', '*')
-    CORS(
-        app,
-        resources={r"/api/*": {"origins": frontend_origin}},
-        supports_credentials=False,
-        methods=["GET", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
-        expose_headers=["Content-Type"],
-        max_age=3600
-    )
+    CORS(app)  # Enable CORS for frontend
     
     # Register blueprints
     app.register_blueprint(api_bp)

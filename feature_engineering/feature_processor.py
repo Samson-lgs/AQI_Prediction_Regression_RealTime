@@ -3,6 +3,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from database.db_operations import DatabaseOperations
+from feature_engineering.data_cleaner import DataCleaner
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -13,6 +14,7 @@ class FeatureProcessor:
         self.db = DatabaseOperations()
         self.scaler_features = StandardScaler()
         self.scaler_target = MinMaxScaler(feature_range=(0, 500))
+        self.data_cleaner = DataCleaner()  # Integrated advanced cleaning
     
     def get_training_data(self, city, days=90):
         """Get historical data for training"""
@@ -150,8 +152,15 @@ class FeatureProcessor:
             logger.error(f"Error normalizing features: {str(e)}")
             return None
     
-    def prepare_training_data(self, city, days=90):
-        """Complete preprocessing pipeline"""
+    def prepare_training_data(self, city, days=90, use_advanced_cleaning=True):
+        """
+        Complete preprocessing pipeline with advanced data cleaning
+        
+        Args:
+            city: City name
+            days: Number of days of historical data
+            use_advanced_cleaning: Whether to use comprehensive cleaning pipeline
+        """
         logger.info(f"Preparing training data for {city}")
         
         # Fetch raw data
@@ -162,17 +171,39 @@ class FeatureProcessor:
         
         logger.info(f"Fetched {len(df)} raw data rows for {city}")
         
-        # Handle missing values
-        df = self.handle_missing_values(df)
-        if df is None or df.empty:
-            logger.warning(f"Data became empty after handling missing values")
-            return None
-        
-        # Detect outliers
-        df = self.detect_outliers(df)
-        if df is None or df.empty:
-            logger.warning(f"Data became empty after outlier detection")
-            return None
+        if use_advanced_cleaning:
+            # Use comprehensive cleaning pipeline
+            df, cleaning_report = self.data_cleaner.comprehensive_cleaning_pipeline(
+                df, 
+                validate_quality=True,
+                check_consistency=True
+            )
+            
+            # Log cleaning summary
+            logger.info(f"Advanced cleaning completed:")
+            logger.info(f"  - Steps: {', '.join(cleaning_report.get('steps_completed', []))}")
+            if 'quality_metrics' in cleaning_report:
+                qm = cleaning_report['quality_metrics']
+                logger.info(f"  - Completeness: {qm.get('completeness_score', 0)}%")
+                logger.info(f"  - Consistency: {qm.get('consistency_score', 0)}%")
+            if 'cleaning_stats' in cleaning_report:
+                cs = cleaning_report['cleaning_stats']
+                logger.info(f"  - Imputed values: {cs.get('imputed_values', 0)}")
+                logger.info(f"  - Outliers handled: {cs.get('outliers_detected', 0)}")
+                logger.info(f"  - Constraint violations fixed: {cs.get('constraint_violations', 0)}")
+        else:
+            # Use basic cleaning (backward compatibility)
+            # Handle missing values
+            df = self.handle_missing_values(df)
+            if df is None or df.empty:
+                logger.warning(f"Data became empty after handling missing values")
+                return None
+            
+            # Detect outliers
+            df = self.detect_outliers(df)
+            if df is None or df.empty:
+                logger.warning(f"Data became empty after outlier detection")
+                return None
         
         # Create features
         df = self.create_features(df)
