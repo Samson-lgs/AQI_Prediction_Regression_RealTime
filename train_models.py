@@ -5,13 +5,20 @@ from feature_engineering.feature_processor import FeatureProcessor
 from ml_models.linear_regression_model import LinearRegressionAQI
 from ml_models.random_forest_model import RandomForestAQI
 from ml_models.xgboost_model import XGBoostAQI
-from ml_models.lstm_model import LSTMAQI
 from config.settings import CITIES
 from models.model_utils import ModelSelector
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Optional LSTM import
+try:
+    from ml_models.lstm_model import LSTMAQI
+    LSTM_AVAILABLE = True
+except Exception as e:
+    LSTM_AVAILABLE = False
+    logger.warning(f"LSTM not available: {e}")
 
 class ModelTrainer:
     def __init__(self, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
@@ -27,9 +34,16 @@ class ModelTrainer:
         self.models = {
             'linear_regression': LinearRegressionAQI(),
             'random_forest': RandomForestAQI(),
-            'xgboost': XGBoostAQI(),
-            'lstm': LSTMAQI()
+            'xgboost': XGBoostAQI()
         }
+        
+        # Add LSTM if available
+        if LSTM_AVAILABLE:
+            self.models['lstm'] = LSTMAQI()
+            logger.info("LSTM model available")
+        else:
+            logger.warning("Training without LSTM model")
+        
         self.selector = ModelSelector()
         
         # Validate ratios
@@ -146,17 +160,20 @@ class ModelTrainer:
         if metrics_xgb:
             self.selector.save_performance(city, 'xgboost', metrics_xgb)
         
-        # LSTM
-        logger.info("Training LSTM...")
-        X_train_lstm, y_train_lstm = self.models['lstm'].create_sequences(X_train, y_train, 24)
-        X_test_lstm, y_test_lstm = self.models['lstm'].create_sequences(X_test, y_test, 24)
-        
-        self.models['lstm'].train(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm)
-        metrics_lstm = self.models['lstm'].evaluate(X_test_lstm, y_test_lstm)
-        results['lstm'] = metrics_lstm
-        self.models['lstm'].save_model(f"models/trained_models/{city}_lstm.h5")
-        if metrics_lstm:
-            self.selector.save_performance(city, 'lstm', metrics_lstm)
+        # LSTM (if available)
+        if 'lstm' in self.models:
+            logger.info("Training LSTM...")
+            X_train_lstm, y_train_lstm = self.models['lstm'].create_sequences(X_train, y_train, 24)
+            X_test_lstm, y_test_lstm = self.models['lstm'].create_sequences(X_test, y_test, 24)
+            
+            self.models['lstm'].train(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm)
+            metrics_lstm = self.models['lstm'].evaluate(X_test_lstm, y_test_lstm)
+            results['lstm'] = metrics_lstm
+            self.models['lstm'].save_model(f"models/trained_models/{city}_lstm.h5")
+            if metrics_lstm:
+                self.selector.save_performance(city, 'lstm', metrics_lstm)
+        else:
+            logger.info("Skipping LSTM (not available)")
         
         logger.info(f"Training completed for {city}. Results: {results}")
         return results
