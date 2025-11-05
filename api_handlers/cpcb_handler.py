@@ -19,7 +19,7 @@ class CPCBHandler:
         self.cities = CITIES
         self.priority_cities = PRIORITY_CITIES
         
-        logger.info(f"CPCB Handler initialized for {len(self.priority_cities)} priority cities")
+        logger.info("CPCB Handler initialized; priority gating disabled, will attempt all configured cities")
     
     def fetch_aqi_data(self, city: str) -> Optional[List[Dict[str, Any]]]:
         """
@@ -31,9 +31,7 @@ class CPCBHandler:
         Returns:
             Optional[List[Dict[str, Any]]]: List of parsed data points or None if failed
         """
-        if city not in self.priority_cities:
-            logger.debug(f"Skipping CPCB fetch for non-priority city: {city}")
-            return None
+        # Priority gating disabled — attempt fetch for any city
             
         try:
             url = f"{self.base_url}/{self.resource_id}"
@@ -77,12 +75,11 @@ class CPCBHandler:
         results = {}
         
         for city in cities:
-            if city in self.priority_cities:
-                data = self.fetch_aqi_data(city)
-                if data:
-                    results[city] = data
-                else:
-                    results[city] = None
+            data = self.fetch_aqi_data(city)
+            if data:
+                results[city] = data
+            else:
+                results[city] = None
                     
         return results
     

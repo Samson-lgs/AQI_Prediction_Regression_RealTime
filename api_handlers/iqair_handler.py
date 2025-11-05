@@ -4,7 +4,7 @@ import requests
 from datetime import datetime
 import logging
 from typing import Dict, List, Optional, Any
-from config.settings import IQAIR_API_KEY, IQAIR_BASE_URL, CITIES, PRIORITY_CITIES
+from config.settings import IQAIR_API_KEY, IQAIR_BASE_URL, CITIES, PRIORITY_CITIES, OPENWEATHER_API_KEY
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class IQAirHandler:
         self.cities = CITIES
         self.priority_cities = PRIORITY_CITIES
         
-        logger.info(f"IQAir Handler initialized for {len(self.priority_cities)} priority cities")
+        logger.info("IQAir Handler initialized; priority gating disabled, will attempt all configured cities")
     
     def fetch_aqi_data(self, city: str) -> Optional[Dict[str, Any]]:
         """
@@ -29,13 +29,14 @@ class IQAirHandler:
         Returns:
             Optional[Dict[str, Any]]: Parsed AQI data or None if failed
         """
-        if city not in self.priority_cities:
-            logger.debug(f"Skipping IQAir fetch for non-priority city: {city}")
-            return None
+        # Priority gating disabled — attempt fetch for any city
             
         try:
             # Get coordinates for the city
             coords = self.CITY_COORDINATES.get(city)
+            if not coords:
+                # Fallback: try geocoding via OpenWeather Geo API
+                coords = self.geocode_city(city)
             if not coords:
                 logger.warning(f"No coordinates found for {city}")
                 return None
@@ -79,12 +80,11 @@ class IQAirHandler:
         results = {}
         
         for city in cities:
-            if city in self.priority_cities:
-                data = self.fetch_aqi_data(city)
-                if data:
-                    results[city] = data
-                else:
-                    results[city] = None
+            data = self.fetch_aqi_data(city)
+            if data:
+                results[city] = data
+            else:
+                results[city] = None
         
         return results
     
@@ -222,3 +222,27 @@ class IQAirHandler:
         'Agartala': (23.8103, 91.2868),
         'Dibrugarh': (27.4728, 94.9103),
     }
+
+    def geocode_city(self, city: str) -> Optional[tuple]:
+        """
+        Use OpenWeather Geo API to get (lat, lon) for a city name.
+        """
+        try:
+            url = 'https://api.openweathermap.org/geo/1.0/direct'
+            params = {
+                'q': f"{city},IN",
+                'limit': 1,
+                'appid': OPENWEATHER_API_KEY
+            }
+            resp = requests.get(url, params=params, timeout=self.timeout)
+            resp.raise_for_status()
+            arr = resp.json() or []
+            if arr:
+                lat = arr[0].get('lat')
+                lon = arr[0].get('lon')
+                if lat is not None and lon is not None:
+                    return (lat, lon)
+            return None
+        except Exception as e:
+            logger.error(f"Geocoding error for {city} (IQAir): {str(e)}")
+            return None

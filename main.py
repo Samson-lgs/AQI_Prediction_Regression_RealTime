@@ -36,28 +36,21 @@ class DataCollectionPipeline:
     
     def collect_data_all_cities_parallel(self):
         """
-        Collect data from ALL 56 cities in parallel
-        Priority cities use CPCB + IQAir + OpenWeather
-        Extended cities use OpenWeather only
+        Collect data in parallel for the union of CITIES and EXTENDED_CITIES.
+        Attempts CPCB + IQAir + OpenWeather for every city (priority gating disabled).
         """
-        logger.info(f"Starting parallel data collection for {len(self.cities)} Indian cities...")
+        # Build unique list of cities
+        unique_cities = sorted(list(set(self.cities) | set(self.extended_cities)))
+        logger.info(f"Starting parallel data collection for {len(unique_cities)} Indian cities (all sources)...")
         start_time = time.time()
         
         with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as executor:
             # Create dictionaries to track futures and their metadata
             futures_dict = {}
-            
-            # Submit priority cities (use all 3 APIs)
-            logger.info(f"Submitting {len(self.priority_cities)} priority cities...")
-            for city in self.priority_cities:
+            # Submit all cities (attempt all sources per city)
+            for city in unique_cities:
                 future = executor.submit(self.collect_priority_city_data, city)
-                futures_dict[future] = (city, 'priority')
-            
-            # Submit extended cities (use OpenWeather only)
-            logger.info(f"Submitting {len(self.extended_cities)} extended cities...")
-            for city in self.extended_cities:
-                future = executor.submit(self.collect_extended_city_data, city)
-                futures_dict[future] = (city, 'extended')
+                futures_dict[future] = (city, 'all')
             
             # Wait for all to complete
             completed = 0
@@ -72,7 +65,7 @@ class DataCollectionPipeline:
                         completed += 1
                         results['success'].append(city)
                         city_logger = get_city_logger('main', city)
-                        city_logger.info(f"✓ Collection completed ({city_type}) [{completed}/{len(self.cities)}]")
+                        city_logger.info(f"✓ Collection completed ({city_type}) [{completed}/{len(unique_cities)}]")
                     else:
                         failed += 1
                         results['failed'].append(city)
@@ -86,10 +79,10 @@ class DataCollectionPipeline:
         elapsed_time = time.time() - start_time
         logger.info(f"\n{'='*60}")
         logger.info(f"Parallel collection completed for ALL CITIES:")
-        logger.info(f"  Successful: {completed}/{len(self.cities)} cities")
-        logger.info(f"  Failed: {failed}/{len(self.cities)} cities")
+        logger.info(f"  Successful: {completed}/{len(unique_cities)} cities")
+        logger.info(f"  Failed: {failed}/{len(unique_cities)} cities")
         logger.info(f"  Time taken: {elapsed_time:.2f} seconds")
-        logger.info(f"  Avg time per city: {elapsed_time/len(self.cities):.2f} seconds")
+        logger.info(f"  Avg time per city: {elapsed_time/len(unique_cities):.2f} seconds")
         logger.info(f"{'='*60}\n")
         
         return results
