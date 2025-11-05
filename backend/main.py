@@ -1,9 +1,16 @@
 """Main entry point for the AQI Prediction System"""
 
+import sys
+import os
+# Add project root to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import schedule
 import time
 from datetime import datetime
-from api_handlers import CPCBHandler, OpenWeatherHandler, IQAirHandler
+from api_handlers.cpcb_handler import CPCBHandler
+from api_handlers.openweather_handler import OpenWeatherHandler
+from api_handlers.iqair_handler import IQAirHandler
 from database.db_operations import DatabaseOperations
 from config.settings import CITIES, PRIORITY_CITIES, EXTENDED_CITIES, PARALLEL_WORKERS
 from config.logging_config import setup_logger, get_city_logger, log_error
