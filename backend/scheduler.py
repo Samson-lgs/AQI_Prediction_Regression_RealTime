@@ -1,7 +1,10 @@
 import schedule
 import time
-from main import DataCollectionPipeline
-from train_models import ModelTrainer
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from backend.main import DataCollectionPipeline
+from models.train_models import ModelTrainer
 import logging
 
 logging.basicConfig(level=logging.INFO)

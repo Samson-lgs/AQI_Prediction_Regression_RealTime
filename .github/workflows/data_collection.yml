@@ -49,7 +49,7 @@ jobs:
           IQAIR_API_KEY: ${{ secrets.IQAIR_API_KEY }}
           CPCB_API_KEY: ${{ secrets.CPCB_API_KEY }}
         run: |
-          python main.py --once
+          python backend/main.py --once
       
       - name: Report status
         if: always()

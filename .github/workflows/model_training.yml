@@ -42,7 +42,7 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          python train_models.py
+          python models/train_all_models.py --all
       
       - name: Report status
         if: always()

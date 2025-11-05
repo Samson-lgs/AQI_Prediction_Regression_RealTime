@@ -12,7 +12,10 @@ This script demonstrates the time-series-aware splitting approach for model trai
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from train_models import ModelTrainer
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from models.train_models import ModelTrainer
 import logging
 
 logging.basicConfig(level=logging.INFO)
