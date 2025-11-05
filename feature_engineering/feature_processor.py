@@ -41,48 +41,233 @@ class FeatureProcessor:
             return None
     
     def create_features(self, df):
-        """Create temporal and derived features"""
+        """
+        Create comprehensive temporal and derived features
+        
+        Features Created:
+        1. Temporal Features: hour, day_of_week, month, quarter, day_of_year
+        2. Seasonal Indicators: season (spring/summer/fall/winter), is_weekend, is_rush_hour
+        3. Cyclical Encodings: hour_sin/cos, dow_sin/cos, month_sin/cos
+        4. Derived Metrics: pollutant ratios, pollutant indices
+        5. Moving Averages: 3h, 6h, 12h, 24h windows
+        6. Lag Features: 1h, 6h, 12h, 24h lags
+        7. Rate of Change: hourly delta for key pollutants
+        8. Interaction Features: temperature × humidity, etc.
+        """
         try:
             df = df.copy()
             
-            # Temporal features
+            # ========================================
+            # 1. TEMPORAL FEATURES
+            # ========================================
             df['hour'] = df['timestamp'].dt.hour
-            df['day_of_week'] = df['timestamp'].dt.dayofweek
+            df['day_of_week'] = df['timestamp'].dt.dayofweek  # 0=Monday, 6=Sunday
             df['month'] = df['timestamp'].dt.month
             df['quarter'] = df['timestamp'].dt.quarter
             df['day_of_year'] = df['timestamp'].dt.dayofyear
+            df['week_of_year'] = df['timestamp'].dt.isocalendar().week
             
-            # Cyclical encoding for hour
+            # ========================================
+            # 2. SEASONAL INDICATORS
+            # ========================================
+            # Season (meteorological): Spring(3-5), Summer(6-8), Fall(9-11), Winter(12-2)
+            def get_season(month):
+                if month in [3, 4, 5]:
+                    return 'spring'
+                elif month in [6, 7, 8]:
+                    return 'summer'
+                elif month in [9, 10, 11]:
+                    return 'fall'
+                else:  # 12, 1, 2
+                    return 'winter'
+            
+            df['season'] = df['month'].apply(get_season)
+            
+            # One-hot encode seasons
+            df['is_spring'] = (df['season'] == 'spring').astype(int)
+            df['is_summer'] = (df['season'] == 'summer').astype(int)
+            df['is_fall'] = (df['season'] == 'fall').astype(int)
+            df['is_winter'] = (df['season'] == 'winter').astype(int)
+            
+            # Weekend indicator
+            df['is_weekend'] = (df['day_of_week'] >= 5).astype(int)  # Saturday=5, Sunday=6
+            
+            # Rush hour indicators (7-10 AM and 5-8 PM)
+            df['is_morning_rush'] = df['hour'].isin([7, 8, 9, 10]).astype(int)
+            df['is_evening_rush'] = df['hour'].isin([17, 18, 19, 20]).astype(int)
+            df['is_rush_hour'] = (df['is_morning_rush'] | df['is_evening_rush']).astype(int)
+            
+            # Time of day categories
+            def get_time_category(hour):
+                if 6 <= hour < 12:
+                    return 'morning'
+                elif 12 <= hour < 17:
+                    return 'afternoon'
+                elif 17 <= hour < 21:
+                    return 'evening'
+                else:
+                    return 'night'
+            
+            df['time_of_day'] = df['hour'].apply(get_time_category)
+            df['is_morning'] = (df['time_of_day'] == 'morning').astype(int)
+            df['is_afternoon'] = (df['time_of_day'] == 'afternoon').astype(int)
+            df['is_evening'] = (df['time_of_day'] == 'evening').astype(int)
+            df['is_night'] = (df['time_of_day'] == 'night').astype(int)
+            
+            # ========================================
+            # 3. CYCLICAL ENCODINGS
+            # ========================================
+            # Hour (24-hour cycle)
             df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
             df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
             
-            # Cyclical encoding for day of week
+            # Day of week (7-day cycle)
             df['dow_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7)
             df['dow_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7)
             
-            # Derived features
-            df['pollutant_ratio'] = df['pm25'] / (df['pm10'] + 0.1)
-            df['no2_so2_ratio'] = df['no2'] / (df['so2'] + 0.1)
+            # Month (12-month cycle)
+            df['month_sin'] = np.sin(2 * np.pi * df['month'] / 12)
+            df['month_cos'] = np.cos(2 * np.pi * df['month'] / 12)
             
-            # Moving averages (lag features)
+            # Day of year (365-day cycle)
+            df['doy_sin'] = np.sin(2 * np.pi * df['day_of_year'] / 365)
+            df['doy_cos'] = np.cos(2 * np.pi * df['day_of_year'] / 365)
+            
+            # ========================================
+            # 4. DERIVED POLLUTANT METRICS
+            # ========================================
+            # Pollutant ratios (avoid division by zero with small epsilon)
+            if 'pm25' in df.columns and 'pm10' in df.columns:
+                df['pm25_pm10_ratio'] = df['pm25'] / (df['pm10'] + 0.1)
+            
+            if 'no2' in df.columns and 'so2' in df.columns:
+                df['no2_so2_ratio'] = df['no2'] / (df['so2'] + 0.1)
+            
+            if 'co' in df.columns and 'no2' in df.columns:
+                df['co_no2_ratio'] = df['co'] / (df['no2'] + 0.1)
+            
+            # Total particulate matter
+            if 'pm25' in df.columns and 'pm10' in df.columns:
+                df['total_pm'] = df['pm25'] + df['pm10']
+            
+            # Total gaseous pollutants
+            if 'no2' in df.columns or 'so2' in df.columns or 'o3' in df.columns:
+                df['total_gases'] = (
+                    df['no2'].fillna(0) if 'no2' in df.columns else 0 +
+                    df['so2'].fillna(0) if 'so2' in df.columns else 0 +
+                    df['o3'].fillna(0) if 'o3' in df.columns else 0
+                )
+            
+            # Pollutant index (weighted sum)
+            df['pollutant_index'] = (
+                (df['pm25'].fillna(0) * 2.0 if 'pm25' in df.columns else 0) +
+                (df['pm10'].fillna(0) * 1.0 if 'pm10' in df.columns else 0) +
+                (df['no2'].fillna(0) * 1.5 if 'no2' in df.columns else 0) +
+                (df['so2'].fillna(0) * 1.2 if 'so2' in df.columns else 0) +
+                (df['o3'].fillna(0) * 1.3 if 'o3' in df.columns else 0)
+            )
+            
+            # ========================================
+            # 5. MOVING AVERAGES (Rolling Windows)
+            # ========================================
+            # Short-term (3h), medium-term (6h, 12h), long-term (24h)
             for window in [3, 6, 12, 24]:
-                df[f'pm25_ma_{window}'] = df['pm25'].rolling(
-                    window=window, min_periods=1
-                ).mean()
-                df[f'pm10_ma_{window}'] = df['pm10'].rolling(
-                    window=window, min_periods=1
-                ).mean()
-                df[f'no2_ma_{window}'] = df['no2'].rolling(
-                    window=window, min_periods=1
-                ).mean()
+                # PM2.5 moving averages
+                if 'pm25' in df.columns:
+                    df[f'pm25_ma_{window}'] = df['pm25'].rolling(
+                        window=window, min_periods=1
+                    ).mean()
+                    df[f'pm25_std_{window}'] = df['pm25'].rolling(
+                        window=window, min_periods=1
+                    ).std()
+                    df[f'pm25_min_{window}'] = df['pm25'].rolling(
+                        window=window, min_periods=1
+                    ).min()
+                    df[f'pm25_max_{window}'] = df['pm25'].rolling(
+                        window=window, min_periods=1
+                    ).max()
+                
+                # PM10 moving averages
+                if 'pm10' in df.columns:
+                    df[f'pm10_ma_{window}'] = df['pm10'].rolling(
+                        window=window, min_periods=1
+                    ).mean()
+                
+                # NO2 moving averages
+                if 'no2' in df.columns:
+                    df[f'no2_ma_{window}'] = df['no2'].rolling(
+                        window=window, min_periods=1
+                    ).mean()
+                
+                # AQI moving averages
+                if 'aqi_value' in df.columns:
+                    df[f'aqi_ma_{window}'] = df['aqi_value'].rolling(
+                        window=window, min_periods=1
+                    ).mean()
             
-            # Lag features
+            # ========================================
+            # 6. LAG FEATURES (Historical Values)
+            # ========================================
             for lag in [1, 6, 12, 24]:
-                df[f'pm25_lag_{lag}'] = df['pm25'].shift(lag)
-                df[f'pm10_lag_{lag}'] = df['pm10'].shift(lag)
-                df[f'aqi_lag_{lag}'] = df['aqi_value'].shift(lag)
+                if 'pm25' in df.columns:
+                    df[f'pm25_lag_{lag}'] = df['pm25'].shift(lag)
+                if 'pm10' in df.columns:
+                    df[f'pm10_lag_{lag}'] = df['pm10'].shift(lag)
+                if 'aqi_value' in df.columns:
+                    df[f'aqi_lag_{lag}'] = df['aqi_value'].shift(lag)
+                if 'no2' in df.columns:
+                    df[f'no2_lag_{lag}'] = df['no2'].shift(lag)
             
-            logger.info("Features created successfully")
+            # ========================================
+            # 7. RATE OF CHANGE (Delta Features)
+            # ========================================
+            # Hourly change
+            if 'pm25' in df.columns:
+                df['pm25_delta_1h'] = df['pm25'].diff(1)
+                df['pm25_delta_6h'] = df['pm25'].diff(6)
+                df['pm25_pct_change_1h'] = df['pm25'].pct_change(1) * 100
+            
+            if 'pm10' in df.columns:
+                df['pm10_delta_1h'] = df['pm10'].diff(1)
+            
+            if 'aqi_value' in df.columns:
+                df['aqi_delta_1h'] = df['aqi_value'].diff(1)
+                df['aqi_delta_6h'] = df['aqi_value'].diff(6)
+                df['aqi_pct_change_1h'] = df['aqi_value'].pct_change(1) * 100
+            
+            # ========================================
+            # 8. INTERACTION FEATURES
+            # ========================================
+            # Weather interactions (if weather data available)
+            if 'temperature' in df.columns and 'humidity' in df.columns:
+                # Apparent temperature effect
+                df['temp_humidity_interaction'] = df['temperature'] * df['humidity'] / 100
+                
+                # Temperature × PM2.5 (thermal inversion effect)
+                df['temp_pm25_interaction'] = df['temperature'] * df['pm25']
+                
+                # Wind speed × pollutants (dispersion effect)
+                if 'wind_speed' in df.columns:
+                    df['wind_pm25_interaction'] = df['wind_speed'] * df['pm25']
+                    df['wind_dispersion_index'] = df['wind_speed'] / (df['pm25'] + 1)
+            
+            # Hour × Weekend (different patterns on weekends)
+            df['hour_weekend_interaction'] = df['hour'] * df['is_weekend']
+            
+            # Season × pollutants (seasonal variations)
+            df['winter_pm25'] = df['is_winter'] * df['pm25']
+            df['summer_o3'] = df['is_summer'] * df['o3'].fillna(0)
+            
+            logger.info(f"Features created successfully: {len(df.columns)} total features")
+            logger.info(f"  - Temporal: hour, day_of_week, month, quarter, week, day_of_year")
+            logger.info(f"  - Seasonal: season categories, weekend, rush hour, time of day")
+            logger.info(f"  - Cyclical: 4 pairs (hour, dow, month, doy)")
+            logger.info(f"  - Derived: pollutant ratios, indices, totals")
+            logger.info(f"  - Moving averages: 3h, 6h, 12h, 24h windows")
+            logger.info(f"  - Lags: 1h, 6h, 12h, 24h historical values")
+            logger.info(f"  - Rate of change: deltas and percentage changes")
+            logger.info(f"  - Interactions: weather × pollutants, time × categories")
+            
             return df
         
         except Exception as e:
