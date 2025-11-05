@@ -21,12 +21,18 @@ def get_current_aqi(city):
         db = DatabaseOperations()
         
         end_date = datetime.now()
+        # Try last 1 hour first
         start_date = end_date - timedelta(hours=1)
-        
         data = db.get_pollution_data(city, start_date, end_date)
+
+        # If no recent reading found, widen window to last 24 hours
+        if not data or len(data) == 0:
+            start_date = end_date - timedelta(hours=24)
+            data = db.get_pollution_data(city, start_date, end_date)
         
         if data:
-            latest = data[-1]  # Most recent
+            # get_pollution_data orders by timestamp DESC; pick the first as latest
+            latest = data[0]
             return jsonify({
                 'city': city,
                 'timestamp': str(latest['timestamp']),
