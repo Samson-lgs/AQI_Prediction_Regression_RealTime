@@ -9,7 +9,11 @@ import os
 import sys
 import logging
 from datetime import datetime
-from train_models import ModelTrainer
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from models.train_models import ModelTrainer
 from config.settings import CITIES
 
 # Configure logging

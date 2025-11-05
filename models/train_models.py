@@ -1,6 +1,12 @@
+import os
+import sys
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split, TimeSeriesSplit
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from feature_engineering.feature_processor import FeatureProcessor
 from ml_models.linear_regression_model import LinearRegressionAQI
 from ml_models.random_forest_model import RandomForestAQI

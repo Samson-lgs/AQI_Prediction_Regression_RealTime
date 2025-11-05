@@ -2,10 +2,14 @@
 
 import joblib
 import os
+import sys
 from typing import Any, Optional, Dict
 import logging
 from datetime import datetime
 import numpy as np
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database.db_config import DatabaseManager
 
