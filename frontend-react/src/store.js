@@ -123,7 +123,7 @@ const useStore = create((set, get) => ({
   connectWebSocket: () => {
     if (socket) return;
     
-    socket = io('http://localhost:5000', {
+    socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling']
     });
     
