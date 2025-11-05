@@ -18,6 +18,26 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import os
 import sys
+from datetime import timedelta
+
+# Optional utilities
+try:
+    from backend.email_utils import send_email
+except Exception:
+    # Allow import when running as module from project root
+    try:
+        from email_utils import send_email
+    except Exception:
+        send_email = None
+
+try:
+    from backend.websocket_handler import broadcast_alert
+except Exception:
+    try:
+        from websocket_handler import broadcast_alert
+    except Exception:
+        def broadcast_alert(*args, **kwargs):
+            return
 
 # Set up main logger
 logger = setup_logger(
@@ -111,6 +131,8 @@ class DataCollectionPipeline:
                             self.db.insert_pollution_data(
                                 city, data['timestamp'], data, 'CPCB'
                             )
+                            # Evaluate alerts
+                            self._process_alerts(city, data)
                     city_logger = get_city_logger('main', city)
                     city_logger.debug("CPCB data collected and stored")
                     data_collected = True
@@ -126,6 +148,8 @@ class DataCollectionPipeline:
                         self.db.insert_pollution_data(
                             city, iqair_data['timestamp'], iqair_data, 'IQAir'
                         )
+                        # Evaluate alerts
+                        self._process_alerts(city, iqair_data)
                     city_logger = get_city_logger('main', city)
                     city_logger.debug("IQAir data collected and stored")
                     data_collected = True
@@ -168,6 +192,8 @@ class DataCollectionPipeline:
                                 city, pollution_data['timestamp'], 
                                 pollution_data, 'OpenWeather'
                             )
+                            # Evaluate alerts
+                            self._process_alerts(city, pollution_data)
                         city_logger.debug("OpenWeather pollution data collected and stored")
                         data_collected = True
             except Exception as e:
@@ -216,6 +242,8 @@ class DataCollectionPipeline:
                             city, pollution_data['timestamp'], 
                             pollution_data, 'OpenWeather'
                         )
+                        # Evaluate alerts
+                        self._process_alerts(city, pollution_data)
                     data_collected = True
             
             return data_collected
@@ -223,6 +251,74 @@ class DataCollectionPipeline:
         except Exception as e:
             logger.error(f"Error collecting extended data for {city}: {str(e)}")
             return False
+
+    def _process_alerts(self, city, pollution_data):
+        """Check and trigger alerts for a given city's latest pollution data."""
+        try:
+            current_aqi = pollution_data.get('aqi_value')
+            if current_aqi is None:
+                return
+
+            active_alerts = self.db.get_active_alerts(city) or []
+            if not active_alerts:
+                return
+
+            now = datetime.now()
+            for alert in active_alerts:
+                threshold = int(alert.get('threshold') or 0)
+                if current_aqi >= threshold:
+                    last_notified = alert.get('last_notified')
+                    # Throttle: notify again only if > 2 hours since last notification
+                    should_notify = True
+                    if last_notified:
+                        try:
+                            if isinstance(last_notified, str):
+                                # Some drivers may return string
+                                last_dt = datetime.fromisoformat(last_notified)
+                            else:
+                                last_dt = last_notified
+                            if now - last_dt < timedelta(hours=2):
+                                should_notify = False
+                        except Exception:
+                            pass
+
+                    if not should_notify:
+                        continue
+
+                    # Compose message
+                    severity = 'hazardous' if current_aqi >= 300 else ('very_unhealthy' if current_aqi >= 200 else ('unhealthy' if current_aqi >= 150 else 'moderate'))
+                    message = f"AQI alert for {city}: current AQI {current_aqi} crossed threshold {threshold}."
+
+                    # Email if configured
+                    if alert.get('alert_type') == 'email' and send_email:
+                        try:
+                            send_email(
+                                to_address=alert.get('contact'),
+                                subject=f"AQI Alert: {city} AQI {current_aqi}",
+                                body=message
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to send email alert: {e}")
+
+                    # Broadcast via websocket (no-op if not initialized)
+                    try:
+                        broadcast_alert(city, {
+                            'alert_type': alert.get('alert_type'),
+                            'current_aqi': current_aqi,
+                            'threshold': threshold,
+                            'message': message,
+                            'severity': severity
+                        })
+                    except Exception:
+                        pass
+
+                    # Mark as notified
+                    try:
+                        self.db.set_alert_notified(alert.get('id'))
+                    except Exception as e:
+                        logger.debug(f"Failed to update alert notified timestamp: {e}")
+        except Exception as e:
+            logger.debug(f"Alert processing failed for {city}: {e}")
     
     def schedule_collection(self):
         """Schedule hourly data collection for all cities"""

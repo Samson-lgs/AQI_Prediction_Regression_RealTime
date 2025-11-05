@@ -18,6 +18,7 @@ const useStore = create((set, get) => ({
   historicalData: [],
   cityComparison: null,
   rankings: [],
+  allCitiesCurrent: [],
   modelMetrics: null,
   loading: false,
   error: null,
@@ -103,6 +104,17 @@ const useStore = create((set, get) => ({
       set({ modelMetrics: response.data.metrics, error: null });
     } catch (error) {
       set({ modelMetrics: null, error: error.message });
+    }
+  },
+
+  // Fetch all cities current AQI for map view
+  fetchAllCitiesCurrent: async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/aqi/all/current`);
+      const data = Array.isArray(response.data?.data) ? response.data.data : [];
+      set({ allCitiesCurrent: data, error: null });
+    } catch (error) {
+      set({ allCitiesCurrent: [], error: error.message });
     }
   },
   

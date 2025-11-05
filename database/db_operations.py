@@ -139,7 +139,78 @@ class DatabaseOperations:
                             performance_table, city_stats_table, region_stats_table]:
             self.db.execute_query(table_query)
         
+        # Ensure alerts table exists
+        try:
+            self.create_alerts_table()
+        except Exception as e:
+            logger.warning(f"Could not create alerts table: {e}")
+
         logger.info("All tables created successfully for 56 cities!")
+
+    # -------------------------------
+    # Alerts table and operations
+    # -------------------------------
+    def create_alerts_table(self):
+        """Create alerts table if it doesn't exist"""
+        table = """
+        CREATE TABLE IF NOT EXISTS alerts (
+            id SERIAL PRIMARY KEY,
+            city VARCHAR(100) NOT NULL,
+            threshold INT NOT NULL,
+            alert_type VARCHAR(20) NOT NULL, -- email, sms, webhook
+            contact VARCHAR(255) NOT NULL,   -- email address / phone / url
+            active BOOLEAN DEFAULT TRUE,
+            last_notified TIMESTAMP NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_alerts_city ON alerts(city);
+        CREATE INDEX IF NOT EXISTS idx_alerts_active ON alerts(active);
+        """
+        self.db.execute_query(table)
+        logger.info("Alerts table ensured")
+
+    def add_alert(self, city: str, threshold: int, alert_type: str, contact: str):
+        """Insert a new alert and return its id"""
+        query = """
+        INSERT INTO alerts (city, threshold, alert_type, contact)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id;
+        """
+        res = self.db.execute_query(query, (city, threshold, alert_type, contact))
+        return res[0][0] if res else None
+
+    def list_alerts(self, city: str):
+        """List alerts for a city"""
+        query = """
+        SELECT id, city, threshold, alert_type, contact, active, last_notified, created_at
+        FROM alerts
+        WHERE city = %s
+        ORDER BY created_at DESC;
+        """
+        return self.db.execute_query_dicts(query, (city,))
+
+    def get_active_alerts(self, city: str):
+        """Get active alerts for a city"""
+        query = """
+        SELECT id, city, threshold, alert_type, contact, last_notified
+        FROM alerts
+        WHERE city = %s AND active = TRUE;
+        """
+        return self.db.execute_query_dicts(query, (city,))
+
+    def set_alert_notified(self, alert_id: int):
+        """Update last_notified timestamp"""
+        query = """
+        UPDATE alerts SET last_notified = NOW() WHERE id = %s;
+        """
+        self.db.execute_query(query, (alert_id,))
+
+    def deactivate_alert(self, alert_id: int):
+        """Deactivate an alert"""
+        query = """
+        UPDATE alerts SET active = FALSE WHERE id = %s;
+        """
+        self.db.execute_query(query, (alert_id,))
     
     def insert_pollution_data(self, city, timestamp, pollutants, data_source):
         """Insert pollution data for a city"""

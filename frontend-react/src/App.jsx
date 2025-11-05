@@ -4,6 +4,9 @@ import { useStore } from './store';
 import Dashboard from './components/Dashboard';
 import Header from './components/Header';
 import Footer from './components/Footer';
+import Rankings from './pages/Rankings.jsx';
+import Compare from './pages/Compare.jsx';
+import MapView from './pages/MapView.jsx';
 
 function App() {
   const { connectWebSocket, disconnectWebSocket, fetchCities } = useStore();
@@ -29,6 +32,9 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/city/:cityId" element={<Dashboard />} />
+            <Route path="/rankings" element={<Rankings />} />
+            <Route path="/compare" element={<Compare />} />
+            <Route path="/map" element={<MapView />} />
           </Routes>
         </main>
         <Footer />

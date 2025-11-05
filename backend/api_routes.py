@@ -558,18 +558,20 @@ class CreateAlert(Resource):
             if not all([city, threshold, alert_type, contact]):
                 api.abort(400, "All fields are required")
             
-            # Store alert in database (simplified - would need alerts table)
             from database.db_operations import DatabaseOperations
             db = DatabaseOperations()
-            
-            # For now, just return success (implement actual storage later)
-            alert_id = f"alert_{city}_{datetime.now().timestamp()}"
+            # Ensure alerts table exists
+            db.create_alerts_table()
+
+            # Insert and return id
+            new_id = db.add_alert(city, int(threshold), alert_type, contact)
             
             return {
-                'alert_id': alert_id,
+                'alert_id': new_id,
                 'city': city,
-                'threshold': threshold,
+                'threshold': int(threshold),
                 'alert_type': alert_type,
+                'contact': contact,
                 'status': 'created',
                 'created_at': datetime.now().isoformat()
             }, 201
@@ -585,14 +587,31 @@ class ListAlerts(Resource):
     def get(self, city):
         """List all alerts for a city"""
         try:
-            # Placeholder - implement actual alert retrieval
+            from database.db_operations import DatabaseOperations
+            db = DatabaseOperations()
+            db.create_alerts_table()
+            alerts = db.list_alerts(city) or []
             return {
                 'city': city,
-                'alerts': [],
-                'message': 'Alert listing feature coming soon'
+                'alerts': alerts
             }, 200
         except Exception as e:
             logger.error(f"Error listing alerts: {str(e)}")
+            api.abort(500, f"Internal server error: {str(e)}")
+
+@ns_alerts.route('/deactivate/<int:alert_id>')
+@ns_alerts.param('alert_id', 'Alert id')
+class DeactivateAlert(Resource):
+    @ns_alerts.doc('deactivate_alert')
+    def post(self, alert_id):
+        """Deactivate an alert by id"""
+        try:
+            from database.db_operations import DatabaseOperations
+            db = DatabaseOperations()
+            db.deactivate_alert(alert_id)
+            return {'status': 'deactivated', 'alert_id': alert_id}, 200
+        except Exception as e:
+            logger.error(f"Error deactivating alert: {str(e)}")
             api.abort(500, f"Internal server error: {str(e)}")
 
 # ============================================================================
