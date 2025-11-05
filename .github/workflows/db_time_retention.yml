@@ -1,0 +1,44 @@
+name: Database Time-based Retention (90 days)
+
+on:
+  schedule:
+    # Run daily at 03:05 UTC
+    - cron: '5 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  prune-age:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: db-time-retention
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install minimal dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install psycopg2-binary==2.9.6
+
+      - name: Prune data older than 90 days
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RETENTION_DAYS: '90'
+          VACUUM_ANALYZE: '1'
+          VACUUM_FULL: '0'
+        run: |
+          python scripts/prune_by_age.py
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "DB time-based retention completed at $(date)"
+          echo "Status: ${{ job.status }}"
