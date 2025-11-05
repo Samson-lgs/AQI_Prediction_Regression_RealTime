@@ -203,10 +203,13 @@ class OpenWeatherHandler:
             clouds = data.get('clouds', {})
             rain = data.get('rain', {})
             sys = data.get('sys', {})
+            coord = data.get('coord', {})
             
             return {
                 'timestamp': datetime.now(),
                 'city': data.get('name'),
+                'lat': coord.get('lat'),
+                'lon': coord.get('lon'),
                 'temperature': main.get('temp'),
                 'feels_like': main.get('feels_like'),
                 'temp_min': main.get('temp_min'),

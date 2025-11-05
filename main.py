@@ -135,21 +135,25 @@ class DataCollectionPipeline:
             
             # 3. OpenWeather (always available)
             try:
+                city_logger = get_city_logger('main', city)
+
+                # Weather data (also gives us coordinates when city not in static map)
+                weather_data = self.openweather.fetch_weather_data(city)
+                if weather_data:
+                    with self.lock:
+                        self.db.insert_weather_data(
+                            city, weather_data['timestamp'], weather_data
+                        )
+                    city_logger.debug("OpenWeather weather data collected and stored")
+                    data_collected = True
+
+                # Determine coordinates: prefer static map, else derive from weather response
                 coords = self.openweather.CITY_COORDINATES.get(city)
+                if not coords and weather_data and weather_data.get('lat') and weather_data.get('lon'):
+                    coords = (weather_data['lat'], weather_data['lon'])
+
+                # Pollution data if we have coordinates
                 if coords:
-                    city_logger = get_city_logger('main', city)
-                    
-                    # Weather data
-                    weather_data = self.openweather.fetch_weather_data(city)
-                    if weather_data:
-                        with self.lock:
-                            self.db.insert_weather_data(
-                                city, weather_data['timestamp'], weather_data
-                            )
-                        city_logger.debug("OpenWeather weather data collected and stored")
-                        data_collected = True
-                    
-                    # Pollution data
                     pollution_data = self.openweather.fetch_air_pollution_data(
                         coords[0], coords[1]
                     )
@@ -177,18 +181,22 @@ class DataCollectionPipeline:
         try:
             data_collected = False
             
+            # Weather data (also provides coordinates for cities missing in static map)
+            weather_data = self.openweather.fetch_weather_data(city)
+            if weather_data:
+                with self.lock:
+                    self.db.insert_weather_data(
+                        city, weather_data['timestamp'], weather_data
+                    )
+                data_collected = True
+
+            # Determine coordinates: static map first, else from weather response
             coords = self.openweather.CITY_COORDINATES.get(city)
+            if not coords and weather_data and weather_data.get('lat') and weather_data.get('lon'):
+                coords = (weather_data['lat'], weather_data['lon'])
+
+            # Pollution data
             if coords:
-                # Weather data
-                weather_data = self.openweather.fetch_weather_data(city)
-                if weather_data:
-                    with self.lock:
-                        self.db.insert_weather_data(
-                            city, weather_data['timestamp'], weather_data
-                        )
-                    data_collected = True
-                
-                # Pollution data
                 pollution_data = self.openweather.fetch_air_pollution_data(
                     coords[0], coords[1]
                 )
