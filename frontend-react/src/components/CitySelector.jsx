@@ -9,7 +9,10 @@ const CitySelector = () => {
   
   const { cities, selectedCity, setSelectedCity, subscribeToCity, unsubscribeFromCity } = useStore();
 
-  const filteredCities = cities.filter(city =>
+  // Ensure cities is always an array
+  const citiesArray = Array.isArray(cities) ? cities : [];
+  
+  const filteredCities = citiesArray.filter(city =>
     city.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 

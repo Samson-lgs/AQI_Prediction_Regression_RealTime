@@ -35,9 +35,12 @@ const useStore = create((set, get) => ({
     try {
       set({ loading: true, error: null });
       const response = await axios.get(`${API_BASE_URL}/cities/`);
-      set({ cities: response.data, loading: false });
+      // API returns array directly, not wrapped in object
+      const citiesData = Array.isArray(response.data) ? response.data : [];
+      set({ cities: citiesData, loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });
+      set({ cities: [] }); // Ensure cities is always an array
     }
   },
   
