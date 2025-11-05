@@ -34,7 +34,7 @@ const useStore = create((set, get) => ({
   fetchCities: async () => {
     try {
       set({ loading: true, error: null });
-      const response = await axios.get(`${API_BASE}/cities/`);
+      const response = await axios.get(`${API_BASE_URL}/cities/`);
       set({ cities: response.data, loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -44,7 +44,7 @@ const useStore = create((set, get) => ({
   // Fetch current AQI for selected city
   fetchCurrentAQI: async (city) => {
     try {
-      const response = await axios.get(`${API_BASE}/aqi/current/${city}`);
+      const response = await axios.get(`${API_BASE_URL}/aqi/current/${city}`);
       set({ currentAQI: response.data, error: null });
     } catch (error) {
       set({ currentAQI: null, error: error.response?.data?.error || error.message });
@@ -55,7 +55,7 @@ const useStore = create((set, get) => ({
   fetchForecast: async (city, hours = 48) => {
     try {
       set({ loading: true });
-      const response = await axios.get(`${API_BASE}/forecast/${city}?hours=${hours}`);
+      const response = await axios.get(`${API_BASE_URL}/forecast/${city}?hours=${hours}`);
       set({ forecast: response.data, loading: false, error: null });
     } catch (error) {
       set({ forecast: null, loading: false, error: error.message });
@@ -65,7 +65,7 @@ const useStore = create((set, get) => ({
   // Fetch historical data
   fetchHistoricalData: async (city, days = 7) => {
     try {
-      const response = await axios.get(`${API_BASE}/aqi/history/${city}?days=${days}`);
+      const response = await axios.get(`${API_BASE_URL}/aqi/history/${city}?days=${days}`);
       set({ historicalData: response.data.data || [], error: null });
     } catch (error) {
       set({ historicalData: [], error: error.message });
@@ -75,7 +75,7 @@ const useStore = create((set, get) => ({
   // Fetch city rankings
   fetchRankings: async (days = 7, metric = 'avg_aqi') => {
     try {
-      const response = await axios.get(`${API_BASE}/cities/rankings?days=${days}&metric=${metric}`);
+      const response = await axios.get(`${API_BASE_URL}/cities/rankings?days=${days}&metric=${metric}`);
       set({ rankings: response.data.rankings || [], error: null });
     } catch (error) {
       set({ rankings: [], error: error.message });
@@ -86,7 +86,7 @@ const useStore = create((set, get) => ({
   compareCities: async (cities, days = 7) => {
     try {
       const citiesParam = cities.join(',');
-      const response = await axios.get(`${API_BASE}/cities/compare?cities=${citiesParam}&days=${days}`);
+      const response = await axios.get(`${API_BASE_URL}/cities/compare?cities=${citiesParam}&days=${days}`);
       set({ cityComparison: response.data.comparison, error: null });
     } catch (error) {
       set({ cityComparison: null, error: error.message });
@@ -96,7 +96,7 @@ const useStore = create((set, get) => ({
   // Fetch model metrics
   fetchModelMetrics: async (city, model = 'xgboost') => {
     try {
-      const response = await axios.get(`${API_BASE}/models/performance/${city}?model=${model}`);
+      const response = await axios.get(`${API_BASE_URL}/models/performance/${city}?model=${model}`);
       set({ modelMetrics: response.data.metrics, error: null });
     } catch (error) {
       set({ modelMetrics: null, error: error.message });
@@ -107,7 +107,7 @@ const useStore = create((set, get) => ({
   batchForecast: async (cities, hours = 24) => {
     try {
       set({ loading: true });
-      const response = await axios.post(`${API_BASE}/forecast/batch`, {
+      const response = await axios.post(`${API_BASE_URL}/forecast/batch`, {
         cities,
         hours_ahead: hours
       });
