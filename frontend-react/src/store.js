@@ -2,7 +2,13 @@ import { create } from 'zustand';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
-const API_BASE = '/api/v1';
+import { create } from 'zustand';
+import axios from 'axios';
+import { io } from 'socket.io-client';
+
+// API Configuration - Use environment variables in production
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const SOCKET_URL = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
 
 // Socket.IO client
 let socket = null;
