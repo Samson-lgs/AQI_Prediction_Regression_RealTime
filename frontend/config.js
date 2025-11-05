@@ -6,7 +6,8 @@ const config = {
   // API_BASE_URL: 'http://localhost:5000/api/v1',
   
   // Production (Update with your Render backend URL)
-  API_BASE_URL: 'https://aqi-backend-api.onrender.com',
+  // Note: script.js appends endpoint paths (e.g., '/cities'), so include the '/api/v1' prefix here.
+  API_BASE_URL: 'https://aqi-backend-api.onrender.com/api/v1',
   
   // Configuration
   DEFAULT_CITY: 'Delhi',
