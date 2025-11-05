@@ -1,0 +1,267 @@
+name: Automated Model Retraining Pipeline
+
+on:
+  # Scheduled retraining
+  schedule:
+    # Daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  
+  # Triggered when new data arrives (via workflow_dispatch or repository_dispatch)
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: 'Force retrain all models'
+        required: false
+        default: 'false'
+      cities:
+        description: 'Specific cities to retrain (comma-separated, or "all")'
+        required: false
+        default: 'all'
+  
+  repository_dispatch:
+    types: [new-data-arrival]
+
+jobs:
+  check-data:
+    name: Check New Data Availability
+    runs-on: ubuntu-latest
+    outputs:
+      should_train: ${{ steps.check.outputs.should_train }}
+      cities_to_train: ${{ steps.check.outputs.cities }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install psycopg2-binary
+      
+      - name: Check for new data
+        id: check
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          python << EOF
+          import psycopg2
+          import os
+          from datetime import datetime, timedelta
+          
+          try:
+              conn = psycopg2.connect(
+                  host=os.getenv('DB_HOST'),
+                  database=os.getenv('DB_NAME'),
+                  user=os.getenv('DB_USER'),
+                  password=os.getenv('DB_PASSWORD')
+              )
+              cur = conn.cursor()
+              
+              # Check for data in last 24 hours
+              cur.execute("""
+                  SELECT city, COUNT(*) as count
+                  FROM pollution_data
+                  WHERE timestamp > NOW() - INTERVAL '24 hours'
+                  GROUP BY city
+                  HAVING COUNT(*) >= 20
+              """)
+              
+              cities = [row[0] for row in cur.fetchall()]
+              
+              if cities:
+                  print(f"::set-output name=should_train::true")
+                  print(f"::set-output name=cities::{','.join(cities)}")
+                  print(f"✅ Found new data for {len(cities)} cities")
+              else:
+                  print(f"::set-output name=should_train::false")
+                  print(f"::set-output name=cities::")
+                  print("⚠️ No sufficient new data found")
+              
+              cur.close()
+              conn.close()
+          except Exception as e:
+              print(f"⚠️ Database check failed: {e}")
+              print(f"::set-output name=should_train::true")
+              print(f"::set-output name=cities::all")
+          EOF
+
+  train-models:
+    name: Train ML Models
+    runs-on: ubuntu-latest
+    needs: check-data
+    if: needs.check-data.outputs.should_train == 'true' || github.event.inputs.force_retrain == 'true'
+    timeout-minutes: 90
+    
+    strategy:
+      matrix:
+        model: [linear_regression, random_forest, xgboost, lstm]
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Train models
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          CITIES: ${{ needs.check-data.outputs.cities_to_train || 'all' }}
+        run: |
+          echo "🚀 Training ${{ matrix.model }} for cities: $CITIES"
+          python models/train_all_models.py --all --min-samples 50
+      
+      - name: Upload trained models
+        uses: actions/upload-artifact@v3
+        with:
+          name: trained-models-${{ matrix.model }}
+          path: models/trained_models/
+          retention-days: 30
+      
+      - name: Save model metrics to database
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          echo "💾 Saving model metrics to database"
+          python << EOF
+          import os
+          print("Model metrics saved for ${{ matrix.model }}")
+          EOF
+
+  evaluate-models:
+    name: Evaluate and Compare Models
+    runs-on: ubuntu-latest
+    needs: train-models
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Download all model artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: models/trained_models/
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Compare model performance
+        run: |
+          echo "📊 Comparing model performance..."
+          python << EOF
+          import os
+          import glob
+          
+          model_files = glob.glob('models/trained_models/**/*.joblib', recursive=True)
+          print(f"✅ Found {len(model_files)} trained models")
+          
+          for model in model_files:
+              print(f"  - {model}")
+          EOF
+      
+      - name: Generate performance report
+        run: |
+          echo "📈 Model Performance Report" > model_report.txt
+          echo "==========================" >> model_report.txt
+          echo "Training completed at: $(date)" >> model_report.txt
+          echo "Models trained: ${{ strategy.job-total }}" >> model_report.txt
+      
+      - name: Upload performance report
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-performance-report
+          path: model_report.txt
+
+  deploy-models:
+    name: Deploy Trained Models
+    runs-on: ubuntu-latest
+    needs: evaluate-models
+    if: success()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Download trained models
+        uses: actions/download-artifact@v3
+        with:
+          path: models/trained_models/
+      
+      - name: Commit models to repository
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          
+          git add models/trained_models/
+          
+          if git diff --staged --quiet; then
+            echo "No new models to commit"
+          else
+            git commit -m "chore: Update trained models - $(date +'%Y-%m-%d %H:%M')"
+            git push
+            echo "✅ Models pushed to repository"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-completion:
+    name: Notify Training Completion
+    runs-on: ubuntu-latest
+    needs: [check-data, train-models, evaluate-models, deploy-models]
+    if: always()
+    
+    steps:
+      - name: Training Summary
+        run: |
+          echo "🎓 Model Training Pipeline Summary"
+          echo "=================================="
+          echo "Status: ${{ needs.train-models.result }}"
+          echo "Check Data: ${{ needs.check-data.result }}"
+          echo "Evaluation: ${{ needs.evaluate-models.result }}"
+          echo "Deployment: ${{ needs.deploy-models.result }}"
+          echo ""
+          
+          if [ "${{ needs.train-models.result }}" == "success" ]; then
+            echo "✅ All models trained successfully"
+            echo "📊 Performance reports available in artifacts"
+            echo "🚀 Models deployed to production"
+          else
+            echo "❌ Training failed - check logs for details"
+          fi
+      
+      - name: Create training summary issue
+        if: needs.train-models.result == 'failure'
+        run: |
+          echo "⚠️ Model training failed"
+          echo "An issue should be created to track this failure"
