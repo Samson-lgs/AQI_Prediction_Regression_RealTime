@@ -20,6 +20,7 @@ const Header = () => {
           <Link to="/rankings" onClick={() => setMobileMenuOpen(false)}>Rankings</Link>
           <Link to="/compare" onClick={() => setMobileMenuOpen(false)}>Compare</Link>
           <Link to="/map" onClick={() => setMobileMenuOpen(false)}>Map</Link>
+          <Link to="/alerts" onClick={() => setMobileMenuOpen(false)}>Alerts</Link>
         </nav>
 
         <div className="header-status">

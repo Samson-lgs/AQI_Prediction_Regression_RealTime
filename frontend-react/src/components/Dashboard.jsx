@@ -7,6 +7,7 @@ import ForecastChart from './ForecastChart';
 import PollutantMetrics from './PollutantMetrics';
 import ModelMetrics from './ModelMetrics';
 import HistoricalChart from './HistoricalChart';
+import HealthAdvice from './HealthAdvice';
 import { AlertCircle, Loader } from 'lucide-react';
 
 const Dashboard = () => {
@@ -73,6 +74,11 @@ const Dashboard = () => {
         {/* Pollutant Metrics */}
         <div className="grid-section pollutants">
           <PollutantMetrics data={currentAQI} />
+        </div>
+
+        {/* Health Advice */}
+        <div className="grid-section health-advice">
+          <HealthAdvice aqi={currentAQI?.aqi} />
         </div>
 
         {/* Forecast Chart */}
@@ -143,6 +149,10 @@ const Dashboard = () => {
           grid-column: span 8;
         }
 
+        .health-advice {
+          grid-column: span 4;
+        }
+
         .forecast {
           grid-column: span 8;
         }
@@ -194,6 +204,7 @@ const Dashboard = () => {
         @media (max-width: 1024px) {
           .current-aqi,
           .pollutants,
+          .health-advice,
           .forecast,
           .historical,
           .models {

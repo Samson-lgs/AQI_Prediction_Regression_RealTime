@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import Rankings from './pages/Rankings.jsx';
 import Compare from './pages/Compare.jsx';
 import MapView from './pages/MapView.jsx';
+import AlertsManagement from './pages/AlertsManagement.jsx';
 
 function App() {
   const { connectWebSocket, disconnectWebSocket, fetchCities } = useStore();
@@ -35,6 +36,7 @@ function App() {
             <Route path="/rankings" element={<Rankings />} />
             <Route path="/compare" element={<Compare />} />
             <Route path="/map" element={<MapView />} />
+            <Route path="/alerts" element={<AlertsManagement />} />
           </Routes>
         </main>
         <Footer />
