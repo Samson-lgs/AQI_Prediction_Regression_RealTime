@@ -1,5 +1,6 @@
 import numpy as np
-from sklearn.model_selection import train_test_split
+import pandas as pd
+from sklearn.model_selection import train_test_split, TimeSeriesSplit
 from feature_engineering.feature_processor import FeatureProcessor
 from ml_models.linear_regression_model import LinearRegressionAQI
 from ml_models.random_forest_model import RandomForestAQI
@@ -13,7 +14,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class ModelTrainer:
-    def __init__(self):
+    def __init__(self, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
+        """
+        Initialize ModelTrainer with time-series-aware splitting
+        
+        Args:
+            train_ratio: Proportion of data for training (default: 70%)
+            val_ratio: Proportion of data for validation (default: 15%)
+            test_ratio: Proportion of data for testing (default: 15%)
+        """
         self.processor = FeatureProcessor()
         self.models = {
             'linear_regression': LinearRegressionAQI(),
@@ -22,9 +31,65 @@ class ModelTrainer:
             'lstm': LSTMAQI()
         }
         self.selector = ModelSelector()
+        
+        # Validate ratios
+        if not np.isclose(train_ratio + val_ratio + test_ratio, 1.0):
+            raise ValueError("Train, validation, and test ratios must sum to 1.0")
+        
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+        self.test_ratio = test_ratio
+    
+    def time_series_split(self, X, y, timestamps=None):
+        """
+        Split data using time-series-aware approach
+        
+        This ensures:
+        1. Training data comes before validation data
+        2. Validation data comes before test data
+        3. No data leakage from future to past
+        4. Temporal ordering is preserved
+        
+        Args:
+            X: Feature matrix
+            y: Target values
+            timestamps: Optional timestamps for logging split points
+            
+        Returns:
+            X_train, X_val, X_test, y_train, y_val, y_test
+        """
+        n = len(X)
+        
+        # Calculate split indices based on time order (no shuffling!)
+        train_end = int(n * self.train_ratio)
+        val_end = int(n * (self.train_ratio + self.val_ratio))
+        
+        # Split data chronologically
+        X_train = X[:train_end]
+        y_train = y[:train_end]
+        
+        X_val = X[train_end:val_end]
+        y_val = y[train_end:val_end]
+        
+        X_test = X[val_end:]
+        y_test = y[val_end:]
+        
+        # Log split information
+        logger.info(f"Time-Series Split Summary:")
+        logger.info(f"  Total samples: {n}")
+        logger.info(f"  Training set: {len(X_train)} samples ({len(X_train)/n*100:.1f}%)")
+        logger.info(f"  Validation set: {len(X_val)} samples ({len(X_val)/n*100:.1f}%)")
+        logger.info(f"  Test set: {len(X_test)} samples ({len(X_test)/n*100:.1f}%)")
+        
+        if timestamps is not None and len(timestamps) == n:
+            logger.info(f"  Training period: {timestamps[0]} to {timestamps[train_end-1]}")
+            logger.info(f"  Validation period: {timestamps[train_end]} to {timestamps[val_end-1]}")
+            logger.info(f"  Test period: {timestamps[val_end]} to {timestamps[-1]}")
+        
+        return X_train, X_val, X_test, y_train, y_val, y_test
     
     def train_all_models(self, city):
-        """Train all models for a city"""
+        """Train all models for a city using time-series-aware splitting"""
         logger.info(f"Starting training for {city}...")
         
         # Prepare data
@@ -33,19 +98,22 @@ class ModelTrainer:
             logger.error(f"No data available for {city}")
             return False
         
+        # Ensure data is sorted by timestamp (critical for time-series split)
+        df = df.sort_values('timestamp').reset_index(drop=True)
+        logger.info(f"Data sorted by timestamp for {city}")
+        
+        # Store timestamps for logging
+        timestamps = df['timestamp'].values
+        
         # Prepare features and target
         feature_cols = [col for col in df.columns 
                        if col not in ['timestamp', 'city', 'data_source', 'id', 'created_at', 'aqi_value']]
         X = df[feature_cols].values
         y = df['aqi_value'].values
         
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-        
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train, y_train, test_size=0.2, random_state=42
+        # Time-series-aware split (NO SHUFFLING!)
+        X_train, X_val, X_test, y_train, y_val, y_test = self.time_series_split(
+            X, y, timestamps
         )
         
         # Train models
