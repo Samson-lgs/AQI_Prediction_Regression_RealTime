@@ -30,7 +30,8 @@ class DatabaseManager:
                         'database': result.path[1:],  # Remove leading '/'
                         'user': result.username,
                         'password': result.password,
-                        'port': result.port or 5432
+                        'port': result.port or 5432,
+                        'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
                     }
                     logger.info("Using DATABASE_URL for connection")
                 else:
@@ -40,7 +41,8 @@ class DatabaseManager:
                         'database': os.getenv('DB_NAME', 'aqi_db'),
                         'user': os.getenv('DB_USER', 'postgres'),
                         'password': os.getenv('DB_PASSWORD'),
-                        'port': os.getenv('DB_PORT', 5432)
+                        'port': int(os.getenv('DB_PORT', 5432)),
+                        'connect_timeout': int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
                     }
                     logger.info("Using individual DB environment variables")
                 
