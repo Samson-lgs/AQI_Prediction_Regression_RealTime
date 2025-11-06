@@ -10,20 +10,12 @@ import MapView from './pages/MapView.jsx';
 import AlertsManagement from './pages/AlertsManagement.jsx';
 
 function App() {
-  const { connectWebSocket, disconnectWebSocket, fetchCities } = useStore();
+  const { fetchCities } = useStore();
 
   useEffect(() => {
-    // Initialize WebSocket connection
-    connectWebSocket();
-
     // Fetch initial cities list
     fetchCities();
-
-    // Cleanup on unmount
-    return () => {
-      disconnectWebSocket();
-    };
-  }, [connectWebSocket, disconnectWebSocket, fetchCities]);
+  }, [fetchCities]);
 
   return (
     <Router>

@@ -1,13 +1,8 @@
 import { create } from 'zustand';
 import axios from 'axios';
-import { io } from 'socket.io-client';
 
 // API Configuration - Use environment variables in production
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
-const SOCKET_URL = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
-
-// Socket.IO client
-let socket = null;
 
 const useStore = create((set, get) => ({
   // State
@@ -147,76 +142,6 @@ const useStore = create((set, get) => ({
     } catch (error) {
       set({ loading: false, error: error.message });
       return null;
-    }
-  },
-  
-  // WebSocket connection
-  connectWebSocket: () => {
-    if (socket) return;
-    
-    socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5
-    });
-    
-    socket.on('connect', () => {
-      console.log('✅ WebSocket connected');
-      set({ connected: true, error: null });
-    });
-    
-    socket.on('connect_error', (error) => {
-      console.log('⚠️ WebSocket connection error:', error.message);
-      set({ connected: false });
-    });
-    
-    socket.on('disconnect', (reason) => {
-      console.log('❌ WebSocket disconnected:', reason);
-      set({ connected: false });
-    });
-    
-    socket.on('aqi_update', (data) => {
-      const { selectedCity, currentAQI } = get();
-      if (data.city === selectedCity) {
-        set({ 
-          currentAQI: { 
-            ...currentAQI, 
-            ...data,
-            timestamp: new Date(data.timestamp).toISOString()
-          } 
-        });
-      }
-    });
-    
-    socket.on('prediction_update', (data) => {
-      console.log('Prediction update:', data);
-    });
-    
-    socket.on('aqi_alert', (data) => {
-      console.log('AQI Alert:', data);
-      // Could trigger a notification here
-    });
-  },
-  
-  disconnectWebSocket: () => {
-    if (socket) {
-      socket.disconnect();
-      socket = null;
-      set({ connected: false });
-    }
-  },
-  
-  subscribeToCity: (city) => {
-    if (socket && socket.connected) {
-      socket.emit('subscribe_city', { city });
-    }
-  },
-  
-  unsubscribeFromCity: (city) => {
-    if (socket && socket.connected) {
-      socket.emit('unsubscribe_city', { city });
     }
   },
   
