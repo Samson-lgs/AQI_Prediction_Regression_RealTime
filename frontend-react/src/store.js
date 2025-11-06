@@ -73,19 +73,21 @@ const useStore = create((set, get) => ({
     try {
       set({ loading: true });
       const response = await axios.get(`${API_BASE_URL}/forecast/${city}?hours=${hours}`);
-      set({ forecast: response.data, loading: false, error: null });
+      set({ forecast: response.data.forecast || response.data, loading: false, error: null });
     } catch (error) {
-      set({ forecast: null, loading: false, error: error.message });
+      console.error('Forecast fetch error:', error);
+      set({ forecast: null, loading: false, error: error.response?.data?.error || error.message });
     }
   },
   
   // Fetch historical data
-  fetchHistoricalData: async (city, days = 7) => {
+  fetchHistoricalData: async (city, days = 1) => {
     try {
       const response = await axios.get(`${API_BASE_URL}/aqi/history/${city}?days=${days}`);
-      set({ historicalData: response.data.data || [], error: null });
+      set({ historicalData: response.data.data || response.data.history || [], error: null });
     } catch (error) {
-      set({ historicalData: [], error: error.message });
+      console.error('Historical data fetch error:', error);
+      set({ historicalData: [], error: error.response?.data?.error || error.message });
     }
   },
   
@@ -114,9 +116,10 @@ const useStore = create((set, get) => ({
   fetchModelMetrics: async (city, model = 'xgboost') => {
     try {
       const response = await axios.get(`${API_BASE_URL}/models/performance/${city}?model=${model}`);
-      set({ modelMetrics: response.data.metrics, error: null });
+      set({ modelMetrics: response.data.metrics || response.data, error: null });
     } catch (error) {
-      set({ modelMetrics: null, error: error.message });
+      console.error('Model metrics fetch error:', error);
+      set({ modelMetrics: null, error: error.response?.data?.error || error.message });
     }
   },
 
@@ -223,7 +226,7 @@ const useStore = create((set, get) => ({
     await Promise.all([
       store.fetchCurrentAQI(city),
       store.fetchForecast(city, 48),
-      store.fetchHistoricalData(city, 7),
+      store.fetchHistoricalData(city, 1), // Changed from 7 to 1 day for 24-hour view
       store.fetchModelMetrics(city)
     ]);
   }
