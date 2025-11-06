@@ -20,8 +20,8 @@ api = Api(
     version='1.0',
     title='AQI Prediction API',
     description='Real-time Air Quality Index Prediction System for 56 Indian Cities',
-    doc='/docs',
-    prefix='/api/v1'
+    doc='/docs'
+    # Remove prefix here - already in Blueprint url_prefix
 )
 
 # Define namespaces for better organization
