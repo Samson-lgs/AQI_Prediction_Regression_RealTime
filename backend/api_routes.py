@@ -224,21 +224,21 @@ class CurrentAQI(Resource):
                 latest = data[0]
                 return {
                     'city': city,
-                    'timestamp': str(latest['timestamp']),
-                    'aqi': latest['aqi_value'],
-                    'pm25': latest['pm25'],
-                    'pm10': latest['pm10'],
-                    'no2': latest['no2'],
-                    'so2': latest['so2'],
-                    'co': latest['co'],
-                    'o3': latest['o3']
+                    'timestamp': str(latest.get('timestamp', '')),
+                    'aqi': float(latest.get('aqi_value', 0)) if latest.get('aqi_value') is not None else 0,
+                    'pm25': float(latest.get('pm25', 0)) if latest.get('pm25') is not None else 0,
+                    'pm10': float(latest.get('pm10', 0)) if latest.get('pm10') is not None else 0,
+                    'no2': float(latest.get('no2', 0)) if latest.get('no2') is not None else 0,
+                    'so2': float(latest.get('so2', 0)) if latest.get('so2') is not None else 0,
+                    'co': float(latest.get('co', 0)) if latest.get('co') is not None else 0,
+                    'o3': float(latest.get('o3', 0)) if latest.get('o3') is not None else 0
                 }, 200
             else:
                 api.abort(404, f'No data found for {city}')
         
         except Exception as e:
             logger.error(f"Error fetching current AQI for {city}: {str(e)}", exc_info=True)
-            api.abort(500, f"Internal server error: {str(e)}")
+            return {'error': str(e), 'city': city}, 500
 
 @ns_aqi.route('/history/<string:city>')
 @ns_aqi.param('city', 'City name')
@@ -258,18 +258,32 @@ class AQIHistory(Resource):
             data = db.get_pollution_data(city, start_date, end_date)
             
             if data:
+                # Convert all datetime and Decimal types to serializable formats
+                serializable_data = []
+                for row in data:
+                    serializable_data.append({
+                        'timestamp': str(row.get('timestamp', '')),
+                        'aqi_value': float(row.get('aqi_value', 0)) if row.get('aqi_value') is not None else 0,
+                        'pm25': float(row.get('pm25', 0)) if row.get('pm25') is not None else 0,
+                        'pm10': float(row.get('pm10', 0)) if row.get('pm10') is not None else 0,
+                        'no2': float(row.get('no2', 0)) if row.get('no2') is not None else 0,
+                        'so2': float(row.get('so2', 0)) if row.get('so2') is not None else 0,
+                        'co': float(row.get('co', 0)) if row.get('co') is not None else 0,
+                        'o3': float(row.get('o3', 0)) if row.get('o3') is not None else 0
+                    })
+                
                 return {
                     'city': city,
                     'days': days,
-                    'data_points': len(data),
-                    'data': data
+                    'data_points': len(serializable_data),
+                    'data': serializable_data
                 }, 200
             else:
-                api.abort(404, f'No historical data found for {city}')
+                return {'city': city, 'data_points': 0, 'data': []}, 200
         
         except Exception as e:
-            logger.error(f"Error fetching history: {str(e)}")
-            api.abort(500, f"Internal server error: {str(e)}")
+            logger.error(f"Error fetching history for {city}: {str(e)}", exc_info=True)
+            return {'error': str(e), 'city': city}, 500
 
 @ns_aqi.route('/all/current')
 class AllCitiesCurrentAQI(Resource):
@@ -469,16 +483,30 @@ class ModelPerformance(Resource):
             else:
                 metrics = db.get_model_performance(city, model_name, days)
             
+            # Convert metrics to serializable format
+            serializable_metrics = []
+            if metrics:
+                for metric in metrics:
+                    serializable_metrics.append({
+                        'city': metric.get('city', city),
+                        'model_name': metric.get('model_name', ''),
+                        'metric_date': str(metric.get('metric_date', '')),
+                        'r2_score': float(metric.get('r2_score', 0)) if metric.get('r2_score') is not None else 0,
+                        'rmse': float(metric.get('rmse', 0)) if metric.get('rmse') is not None else 0,
+                        'mae': float(metric.get('mae', 0)) if metric.get('mae') is not None else 0,
+                        'mape': float(metric.get('mape', 0)) if metric.get('mape') is not None else 0
+                    })
+            
             return {
                 'city': city,
                 'model': model_name,
                 'days': days,
-                'metrics': metrics
+                'metrics': serializable_metrics
             }, 200
         
         except Exception as e:
-            logger.error(f"Error fetching model performance: {str(e)}")
-            api.abort(500, f"Internal server error: {str(e)}")
+            logger.error(f"Error fetching model performance for {city}: {str(e)}", exc_info=True)
+            return {'error': str(e), 'city': city, 'metrics': []}, 500
 
 @ns_models.route('/compare')
 class ModelComparison(Resource):
