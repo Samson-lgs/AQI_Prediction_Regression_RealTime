@@ -12,7 +12,8 @@ services:
     env: python
     region: oregon
     buildCommand: "python --version && pip install --upgrade pip && pip install -r requirements.txt"
-    startCommand: "gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 --log-level debug wsgi:app"
+  # Use eventlet worker to support WebSockets (Socket.IO)
+  startCommand: "gunicorn --bind 0.0.0.0:$PORT --worker-class eventlet --workers 1 --timeout 120 --log-level debug wsgi:app"
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.18

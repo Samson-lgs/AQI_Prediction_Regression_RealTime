@@ -26,11 +26,20 @@ def create_app():
     # Disable strict trailing slash requirement
     app.url_map.strict_slashes = False
     
-    # Enable CORS for frontend
-    CORS(app, resources={
-        r"/api/*": {"origins": "*"},
-        r"/socket.io/*": {"origins": "*"}
-    })
+    # Enable CORS for frontend (always send headers, even on errors/preflight)
+    CORS(
+        app,
+        resources={
+            r"/api/*": {"origins": "*"},
+            r"/socket.io/*": {"origins": "*"},
+        },
+        supports_credentials=False,
+        allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["Content-Type"],
+        methods=["GET", "POST", "OPTIONS"],
+        send_wildcard=True,
+        always_send=True,
+    )
     
     # Initialize rate limiter
     limiter = Limiter(
