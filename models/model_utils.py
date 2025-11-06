@@ -65,8 +65,15 @@ class ModelSelector:
             SET r2_score=EXCLUDED.r2_score, rmse=EXCLUDED.rmse, 
                 mae=EXCLUDED.mae, mape=EXCLUDED.mape;
             """
-            params = (city, model_name, metrics.get('r2'), metrics.get('rmse'), 
-                      metrics.get('mae'), metrics.get('mape'))
+            # Convert numpy types to Python native types
+            params = (
+                city, 
+                model_name, 
+                float(metrics.get('r2', 0)), 
+                float(metrics.get('rmse', 0)), 
+                float(metrics.get('mae', 0)), 
+                float(metrics.get('mape', 0))
+            )
             self.db.execute_query(query, params)
             logger.info(f"Performance saved for {model_name} in {city}")
         except Exception as e:
