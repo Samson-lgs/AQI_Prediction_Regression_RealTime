@@ -208,7 +208,6 @@ class CityComparison(Resource):
 class CurrentAQI(Resource):
     @cache_response(timeout=300)
     @ns_aqi.doc('get_current_aqi')
-    @ns_aqi.marshal_with(aqi_data_model, code=200)
     def get(self, city):
         """Get current AQI data for a city"""
         try:
@@ -238,7 +237,7 @@ class CurrentAQI(Resource):
                 api.abort(404, f'No data found for {city}')
         
         except Exception as e:
-            logger.error(f"Error fetching current AQI for {city}: {str(e)}")
+            logger.error(f"Error fetching current AQI for {city}: {str(e)}", exc_info=True)
             api.abort(500, f"Internal server error: {str(e)}")
 
 @ns_aqi.route('/history/<string:city>')
