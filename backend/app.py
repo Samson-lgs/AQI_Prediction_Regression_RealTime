@@ -83,6 +83,12 @@ def create_app():
     def index():
         return send_from_directory('../frontend', 'index.html')
     
+    # Simple health check for root
+    @app.route('/health')
+    @limiter.exempt
+    def health():
+        return {'status': 'ok', 'message': 'AQI Backend API is running'}, 200
+    
     @app.route('/styles.css')
     def send_styles():
         return send_from_directory('../frontend', 'styles.css')
