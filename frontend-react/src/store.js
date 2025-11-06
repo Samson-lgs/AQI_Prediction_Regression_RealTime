@@ -48,8 +48,21 @@ const useStore = create((set, get) => ({
   // Fetch current AQI for selected city
   fetchCurrentAQI: async (city) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/aqi/current/${city}`);
-      set({ currentAQI: response.data, error: null });
+      // Fallback: Use all cities endpoint and filter for the selected city
+      // This works around the /aqi/current/{city} 500 error
+      try {
+        const response = await axios.get(`${API_BASE_URL}/aqi/current/${city}`);
+        set({ currentAQI: response.data, error: null });
+      } catch (primaryError) {
+        // Fallback to all cities endpoint
+        const allResponse = await axios.get(`${API_BASE_URL}/aqi/all/current`);
+        const cityData = allResponse.data.data?.find(c => c.city === city);
+        if (cityData) {
+          set({ currentAQI: cityData, error: null });
+        } else {
+          throw new Error(`No data available for ${city}`);
+        }
+      }
     } catch (error) {
       set({ currentAQI: null, error: error.response?.data?.error || error.message });
     }
