@@ -23,6 +23,9 @@ def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     
+    # Disable strict trailing slash requirement
+    app.url_map.strict_slashes = False
+    
     # Enable CORS for frontend
     CORS(app, resources={
         r"/api/*": {"origins": "*"},
