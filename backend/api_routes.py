@@ -215,15 +215,13 @@ class CurrentAQI(Resource):
             from database.db_operations import DatabaseOperations
             db = DatabaseOperations()
             
+            # Look for most recent data in the last 48 hours
             end_date = datetime.now()
-            start_date = end_date - timedelta(hours=1)
+            start_date = end_date - timedelta(hours=48)
             data = db.get_pollution_data(city, start_date, end_date)
-
-            if not data or len(data) == 0:
-                start_date = end_date - timedelta(hours=24)
-                data = db.get_pollution_data(city, start_date, end_date)
             
-            if data:
+            if data and len(data) > 0:
+                # Data is already sorted by timestamp DESC, so first item is most recent
                 latest = data[0]
                 return {
                     'city': city,
@@ -240,7 +238,7 @@ class CurrentAQI(Resource):
                 api.abort(404, f'No data found for {city}')
         
         except Exception as e:
-            logger.error(f"Error fetching current AQI: {str(e)}")
+            logger.error(f"Error fetching current AQI for {city}: {str(e)}")
             api.abort(500, f"Internal server error: {str(e)}")
 
 @ns_aqi.route('/history/<string:city>')
