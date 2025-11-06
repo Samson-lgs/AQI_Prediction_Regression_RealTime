@@ -72,27 +72,13 @@ def create_app():
         from backend.routes import api_bp as basic_api_bp
         app.register_blueprint(basic_api_bp)
     
-    # Initialize WebSocket support
-    try:
-        from backend.websocket_handler import init_socketio, register_socketio_events
-        socketio = init_socketio(app)
-        register_socketio_events(socketio)
-        app.socketio = socketio
-        logger.info("WebSocket support enabled at /socket.io")
-    except Exception as e:
-        logger.warning(f"WebSocket initialization failed: {e}")
-        app.socketio = None
+    # Disable WebSocket support for production stability
+    # (Can be re-enabled later with compatible eventlet/gunicorn versions)
+    app.socketio = None
+    logger.info("WebSocket support disabled for stability")
     
-    # Initialize Redis cache
-    try:
-        from backend.cache_manager import cache, warm_cache
-        if cache.enabled:
-            logger.info("Redis cache enabled - warming cache...")
-            warm_cache()
-        else:
-            logger.warning("Redis cache disabled - running without caching")
-    except Exception as e:
-        logger.warning(f"Cache initialization failed: {e}")
+    # Disable Redis cache for production stability on free tier
+    logger.warning("Redis cache disabled - running without caching")
     
     # Root health check for backward compatibility
     @app.route('/health')
@@ -144,8 +130,8 @@ def create_app():
     logger.info("=" * 70)
     logger.info("Features enabled:")
     logger.info("  ✓ RESTful API with Swagger docs (/api/v1/docs)")
-    logger.info(f"  {'✓' if app.socketio else '✗'} WebSocket real-time updates (/socket.io)")
-    logger.info(f"  {'✓' if cache.enabled else '✗'} Redis caching")
+    logger.info("  ✗ WebSocket real-time updates (disabled for stability)")
+    logger.info("  ✗ Redis caching (disabled for free tier)")
     logger.info("  ✓ Rate limiting (200/day, 50/hour)")
     logger.info("  ✓ CORS enabled for all origins")
     logger.info("=" * 70)
@@ -156,13 +142,5 @@ if __name__ == '__main__':
     app = create_app()
     
     logger.info("Starting Flask application on http://0.0.0.0:5000")
-    
-    # Use eventlet for WebSocket support if available
-    if app.socketio:
-        logger.info("Starting with SocketIO (eventlet)")
-        import eventlet
-        eventlet.monkey_patch()
-        app.socketio.run(app, debug=True, port=5000, host='0.0.0.0')
-    else:
-        logger.info("Starting without SocketIO")
-        app.run(debug=True, port=5000, host='0.0.0.0')
+    logger.info("Starting with standard WSGI (production mode)")
+    app.run(debug=True, port=5000, host='0.0.0.0')
