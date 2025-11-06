@@ -2,6 +2,7 @@
 # exit on error
 set -o errexit
 
+# Build script for Render deployment - Updated Nov 6, 2025
 echo "Starting build process..."
 
 # Install Python dependencies
