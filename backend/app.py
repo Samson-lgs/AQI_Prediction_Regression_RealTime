@@ -41,8 +41,12 @@ def create_app():
     # Apply rate limiting to API routes
     @limiter.request_filter
     def exempt_health_check():
-        """Exempt health check from rate limiting"""
-        return request.endpoint == 'api.health'
+        """Exempt health checks from rate limiting"""
+        try:
+            # Exempt both root and versioned health endpoints
+            return request.path in ('/health', '/api/v1/health')
+        except Exception:
+            return False
     
     logger.info("Rate limiter initialized")
     

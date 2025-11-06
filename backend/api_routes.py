@@ -19,7 +19,7 @@ api = Api(
     api_bp,
     version='1.0',
     title='AQI Prediction API',
-    description='Real-time Air Quality Index Prediction System for 56 Indian Cities',
+    description='Real-time Air Quality Index Prediction System for 67 Indian Cities',
     doc='/docs'
     # Remove prefix here - already in Blueprint url_prefix
 )
@@ -617,6 +617,35 @@ class DeactivateAlert(Resource):
 # ============================================================================
 # Health Check
 # ============================================================================
+
+@api.route('/health')
+class ApiHealth(Resource):
+    def get(self):
+        """Lightweight API health check at /api/v1/health"""
+        try:
+            # Attempt a very quick DB connectivity check but don't fail health if it errors
+            db_status = 'unknown'
+            try:
+                from database.db_operations import DatabaseOperations
+                db = DatabaseOperations()
+                db.db.execute_query("SELECT 1;")
+                db_status = 'connected'
+            except Exception as _:
+                db_status = 'unavailable'
+
+            return {
+                'status': 'ok',
+                'database': db_status,
+                'timestamp': datetime.now().isoformat()
+            }, 200
+        except Exception as e:
+            # Always return a 200 for basic liveness to satisfy platform health checks
+            logger.warning(f"/api/v1/health fallback due to error: {e}")
+            return {
+                'status': 'ok',
+                'database': 'unknown',
+                'timestamp': datetime.now().isoformat()
+            }, 200
 
 @ns_cities.route('/health')
 class Health(Resource):
