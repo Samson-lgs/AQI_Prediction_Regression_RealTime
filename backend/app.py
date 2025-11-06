@@ -82,28 +82,22 @@ def create_app():
     except Exception as e:
         logger.warning(f"Cache initialization failed: {e}")
     
-    # Frontend routes
-    @app.route('/')
-    def index():
-        return send_from_directory('../frontend', 'index.html')
-    
-    # Simple health check for root
+    # Root health check for backward compatibility
     @app.route('/health')
     @limiter.exempt
     def health():
         return {'status': 'ok', 'message': 'AQI Backend API is running'}, 200
     
-    @app.route('/styles.css')
-    def send_styles():
-        return send_from_directory('../frontend', 'styles.css')
-    
-    @app.route('/script.js')
-    def send_script():
-        return send_from_directory('../frontend', 'script.js')
-    
-    @app.route('/config.js')
-    def send_config():
-        return send_from_directory('../frontend', 'config.js')
+    # API root endpoint
+    @app.route('/')
+    def api_root():
+        return {
+            'message': 'AQI Prediction API',
+            'version': '1.0',
+            'docs': '/api/v1/docs',
+            'health': '/api/v1/health',
+            'cities': '/api/v1/cities'
+        }, 200
     
     # Cache stats endpoint
     @app.route('/api/v1/cache/stats')
@@ -116,6 +110,9 @@ def create_app():
             return {'error': str(e)}, 500
     
     # Error handlers
+    @app.errorhandler(404)
+    def not_found(error):
+        return {'error': 'Not found'}, 404
     @app.errorhandler(404)
     def not_found(error):
         return {'error': 'Not found'}, 404
