@@ -84,9 +84,15 @@ async function fetchCities() {
         const data = await response.json();
         console.log('Fetched cities data:', data);
         
-        if (data && data.cities && Array.isArray(data.cities)) {
+        // API returns array directly: [{name: "Delhi", priority: true}, ...]
+        if (Array.isArray(data)) {
+            console.log('Number of cities:', data.length);
+            // Extract just the city names
+            return data.map(city => city.name || city);
+        } else if (data && data.cities && Array.isArray(data.cities)) {
+            // Fallback for wrapped format {cities: [...]}
             console.log('Number of cities:', data.cities.length);
-            return data.cities;
+            return data.cities.map(city => city.name || city);
         } else {
             console.error('Invalid cities data format:', data);
             return [];
