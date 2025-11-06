@@ -290,7 +290,7 @@ pytest tests/ --cov=. --cov-report=html
 
 ## Academic Information
 
-- **Institution**: Adichunchanagiri Institute of Technology
+- **Institution**: ATME College of Engineering
 - **Department**: Computer Science & Engineering
 - **Course**: Machine Learning / Data Science Project
 - **Year**: 2024-2025
@@ -301,7 +301,7 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## Acknowledgments
 
-- Central Pollution Control Board (CPCB) for air quality data
+- Central Pollution Control Board (CPCB) for air quality data (optional)
 - OpenWeather for weather API services
 - IQAir for global air quality monitoring
 - scikit-learn, XGBoost, and TensorFlow communities
