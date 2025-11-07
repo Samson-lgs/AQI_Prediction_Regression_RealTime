@@ -3,6 +3,7 @@ from datetime import datetime
 import logging
 from typing import Dict, List, Optional, Any, Tuple
 from config.settings import OPENWEATHER_API_KEY, OPENWEATHER_BASE_URL, CITIES
+from api_handlers.aqi_calculator import calculate_aqi, get_aqi_category
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -214,19 +215,31 @@ class OpenWeatherHandler:
         try:
             if 'list' in data and data['list']:
                 pollution = data['list'][0]['components']
-                aqi = data['list'][0].get('main', {}).get('aqi')
+                
+                # Get pollutant concentrations
+                pm25 = pollution.get('pm2_5')
+                pm10 = pollution.get('pm10')
+                no2 = pollution.get('no2')
+                so2 = pollution.get('so2')
+                co = pollution.get('co')
+                o3 = pollution.get('o3')
+                
+                # Calculate proper AQI from pollutant concentrations (0-500 scale)
+                from api_handlers.aqi_calculator import calculate_aqi, get_aqi_category
+                aqi_value = calculate_aqi(pm25=pm25, pm10=pm10, no2=no2, so2=so2, co=co, o3=o3)
+                category = get_aqi_category(aqi_value)
                 
                 return {
                     'timestamp': datetime.now(),
-                    'pm25': pollution.get('pm2_5'),
-                    'pm10': pollution.get('pm10'),
-                    'no2': pollution.get('no2'),
-                    'so2': pollution.get('so2'),
-                    'co': pollution.get('co'),
-                    'o3': pollution.get('o3'),
+                    'pm25': pm25,
+                    'pm10': pm10,
+                    'no2': no2,
+                    'so2': so2,
+                    'co': co,
+                    'o3': o3,
                     'data_source': 'OpenWeather',
-                    'aqi_value': aqi,
-                    'quality': self._get_quality_label(aqi)
+                    'aqi_value': aqi_value,
+                    'quality': category['category']
                 }
             return None
         

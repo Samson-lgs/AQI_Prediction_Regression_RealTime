@@ -64,28 +64,9 @@ def step_2_collect_data():
             
             # Try OpenWeather (most reliable)
             try:
+                # Fetch weather data
                 ow_data = openweather.fetch_weather_data(city)
                 if ow_data and isinstance(ow_data, dict):
-                    # Insert pollution data if available
-                    if 'aqi_value' in ow_data or 'pm25' in ow_data:
-                        pollutants = {
-                            'pm25': ow_data.get('pm25'),
-                            'pm10': ow_data.get('pm10'),
-                            'no2': ow_data.get('no2'),
-                            'so2': ow_data.get('so2'),
-                            'co': ow_data.get('co'),
-                            'o3': ow_data.get('o3'),
-                            'aqi_value': ow_data.get('aqi_value')
-                        }
-                        db.insert_pollution_data(
-                            city,
-                            datetime.now(),
-                            pollutants,
-                            'OpenWeather'
-                        )
-                        collected += 1
-                        logger.info(f"  ✅ OpenWeather pollution data collected for {city}")
-                    
                     # Insert weather data
                     if 'temperature' in ow_data:
                         weather = {
@@ -102,6 +83,26 @@ def step_2_collect_data():
                             weather
                         )
                         logger.info(f"  ✅ OpenWeather weather data collected for {city}")
+                
+                # Fetch pollution data separately
+                coords = openweather.CITY_COORDINATES.get(city)
+                if not coords and ow_data:
+                    coords = (ow_data.get('lat'), ow_data.get('lon'))
+                
+                if coords:
+                    pollution_data = openweather.fetch_air_pollution_data(coords[0], coords[1])
+                    if pollution_data and isinstance(pollution_data, dict):
+                        db.insert_pollution_data(
+                            city,
+                            pollution_data.get('timestamp', datetime.now()),
+                            pollution_data,
+                            'OpenWeather'
+                        )
+                        collected += 1
+                        logger.info(f"  ✅ OpenWeather pollution data collected for {city} - AQI: {pollution_data.get('aqi_value', 'N/A')}")
+                else:
+                    logger.warning(f"  ⚠️ No coordinates for {city}, skipping pollution data")
+                    
             except Exception as e:
                 logger.warning(f"  ⚠️ OpenWeather failed for {city}: {str(e)}")
             
