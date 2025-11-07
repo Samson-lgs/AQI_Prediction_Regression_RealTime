@@ -2,7 +2,7 @@ import React from 'react';
 import { getPollutantCategory, getPollutantLimit } from '../utils';
 
 const PollutantMetrics = ({ data }) => {
-  if (!data || !data.pollutants) {
+  if (!data) {
     return (
       <div className="card">
         <h2>Pollutant Levels</h2>
@@ -42,7 +42,8 @@ const PollutantMetrics = ({ data }) => {
       
       <div className="pollutants-grid">
         {pollutants.map(pollutant => {
-          const value = data.pollutants[pollutant.key];
+          // API returns pollutants directly in data object, not nested
+          const value = data[pollutant.key];
           
           if (value === undefined || value === null) {
             return (
