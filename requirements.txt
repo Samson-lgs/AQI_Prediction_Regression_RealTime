@@ -1,9 +1,7 @@
 Flask==2.3.0
 Flask-CORS==4.0.0
-Flask-SocketIO==5.3.4
 Flask-Limiter==3.5.0
 flask-restx==1.2.0
-python-socketio==5.9.0
 redis==5.0.1
 numpy==1.23.5
 pandas==1.5.3
@@ -18,4 +16,3 @@ pytest==7.3.1
 gunicorn==20.1.0
 schedule==1.2.0
 optuna==3.5.0
-eventlet==0.33.3
