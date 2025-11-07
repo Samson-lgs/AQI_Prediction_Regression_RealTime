@@ -1,14 +1,8 @@
 import requests
 from datetime import datetime
 import logging
-import sys
-import os
 from typing import Dict, List, Optional, Any, Tuple
 from config.settings import OPENWEATHER_API_KEY, OPENWEATHER_BASE_URL, CITIES
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from calculate_aqi_hybrid import calculate_aqi_from_pollutants
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -210,7 +204,6 @@ class OpenWeatherHandler:
     def _parse_pollution_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Parse pollution data from OpenWeather API
-        Uses hybrid system: OpenWeather pollutant breakpoints → 0-500 AQI scale
         
         Args:
             data (Dict[str, Any]): Raw API response
@@ -221,29 +214,19 @@ class OpenWeatherHandler:
         try:
             if 'list' in data and data['list']:
                 pollution = data['list'][0]['components']
-                
-                # Extract pollutant concentrations
-                so2 = pollution.get('so2', 0)
-                no2 = pollution.get('no2', 0)
-                pm10 = pollution.get('pm10', 0)
-                pm25 = pollution.get('pm2_5', 0)
-                o3 = pollution.get('o3', 0)
-                co = pollution.get('co', 0)
-                
-                # Calculate AQI (0-500) using OpenWeather breakpoints
-                aqi_value = calculate_aqi_from_pollutants(so2, no2, pm10, pm25, o3, co)
+                aqi = data['list'][0].get('main', {}).get('aqi')
                 
                 return {
                     'timestamp': datetime.now(),
-                    'pm25': pm25,
-                    'pm10': pm10,
-                    'no2': no2,
-                    'so2': so2,
-                    'co': co,
-                    'o3': o3,
+                    'pm25': pollution.get('pm2_5'),
+                    'pm10': pollution.get('pm10'),
+                    'no2': pollution.get('no2'),
+                    'so2': pollution.get('so2'),
+                    'co': pollution.get('co'),
+                    'o3': pollution.get('o3'),
                     'data_source': 'OpenWeather',
-                    'aqi_value': aqi_value,  # 0-500 scale
-                    'quality': self._get_quality_label(aqi_value)
+                    'aqi_value': aqi,
+                    'quality': self._get_quality_label(aqi)
                 }
             return None
         
@@ -337,26 +320,23 @@ class OpenWeatherHandler:
     @staticmethod
     def _get_quality_label(aqi: Optional[int]) -> str:
         """
-        Get air quality label based on AQI value (0-500 scale)
+        Get air quality label based on OpenWeather AQI value (1-5 scale)
         
         Args:
-            aqi (Optional[int]): AQI value (0-500)
+            aqi (Optional[int]): AQI value from OpenWeather
             
         Returns:
             str: Air quality label
         """
         if aqi is None:
             return 'Unknown'
+            
+        labels = {
+            1: 'Good',
+            2: 'Fair',
+            3: 'Moderate',
+            4: 'Poor',
+            5: 'Very Poor'
+        }
         
-        if aqi <= 50:
-            return 'Good'
-        elif aqi <= 100:
-            return 'Satisfactory'
-        elif aqi <= 200:
-            return 'Moderate'
-        elif aqi <= 300:
-            return 'Poor'
-        elif aqi <= 400:
-            return 'Very Poor'
-        else:
-            return 'Severe'
+        return labels.get(aqi, 'Unknown')

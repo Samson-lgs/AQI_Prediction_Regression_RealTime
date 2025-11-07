@@ -227,9 +227,24 @@ async function fetchForecast(city) {
 
 async function fetchMetrics(city) {
     try {
-        const response = await fetch(`${API_BASE_URL}/metrics/${city}`);
+        // Fetch model performance metrics
+        const response = await fetch(`${API_BASE_URL}/models/performance/${city}?days=30`);
         if (response.ok) {
-            return await response.json();
+            const data = await response.json();
+            
+            // Also fetch model comparison to get best model
+            try {
+                const compResponse = await fetch(`${API_BASE_URL}/models/compare?city=${city}`);
+                if (compResponse.ok) {
+                    const compData = await compResponse.json();
+                    data.best_model = compData.best_model;
+                    data.comparison = compData.comparison;
+                }
+            } catch (compError) {
+                console.log('Model comparison not available:', compError);
+            }
+            
+            return data;
         }
         return null;
     } catch (error) {
@@ -448,43 +463,72 @@ function displayHistoricalChart(data) {
 }
 
 function displayMetrics(data) {
-    if (!data.metrics || data.metrics.length === 0) {
+    if (!data || (!data.metrics || data.metrics.length === 0)) {
         document.getElementById('metricsContainer').innerHTML = '<p class="no-data">No performance metrics available yet. Train models to see accuracy.</p>';
+        document.getElementById('activeModel').textContent = 'Not Available';
         return;
     }
     
     const container = document.getElementById('metricsContainer');
     container.innerHTML = '';
     
-    const metrics = data.metrics[0];
+    // Get the best model from comparison or use first metric
+    let bestModelName = data.best_model || (data.metrics[0] ? data.metrics[0].model_name : 'XGBoost');
+    let metrics = data.metrics[0];
     
-    // Update active model name
-    document.getElementById('activeModel').textContent = metrics.model_name || 'XGBoost';
+    // If we have comparison data, find the best performing model's metrics
+    if (data.comparison && bestModelName && data.comparison[bestModelName]) {
+        const bestMetrics = data.comparison[bestModelName];
+        metrics = {
+            model_name: bestModelName,
+            r2_score: bestMetrics.r2_score,
+            rmse: bestMetrics.rmse,
+            mae: bestMetrics.mae,
+            mape: bestMetrics.mape
+        };
+    }
+    
+    // Update active model name with indicator
+    const modelDisplay = bestModelName.replace(/_/g, ' ').toUpperCase();
+    document.getElementById('activeModel').textContent = modelDisplay;
+    
+    // Add best model badge
+    const modelBadge = document.createElement('div');
+    modelBadge.className = 'model-badge';
+    modelBadge.innerHTML = `<span class="badge-icon">⭐</span> Best Performing Model`;
+    const modelSelector = document.querySelector('.model-selector');
+    if (modelSelector && !modelSelector.querySelector('.model-badge')) {
+        modelSelector.appendChild(modelBadge);
+    }
     
     const metricsToDisplay = [
         {
             label: 'R² Score',
-            value: (metrics.r2_score || 0).toFixed(3),
-            desc: 'Model Accuracy',
-            good: metrics.r2_score >= 0.85
+            value: metrics.r2_score !== null && metrics.r2_score !== undefined ? metrics.r2_score.toFixed(3) : '--',
+            desc: 'Model Accuracy (Higher is better)',
+            good: metrics.r2_score >= 0.85,
+            icon: '🎯'
         },
         {
             label: 'RMSE',
-            value: (metrics.rmse || 0).toFixed(2),
-            desc: 'Root Mean Square Error',
-            good: metrics.rmse <= 15
+            value: metrics.rmse !== null && metrics.rmse !== undefined ? metrics.rmse.toFixed(2) : '--',
+            desc: 'Root Mean Square Error (Lower is better)',
+            good: metrics.rmse <= 15 && metrics.rmse > 0,
+            icon: '📊'
         },
         {
             label: 'MAE',
-            value: (metrics.mae || 0).toFixed(2),
-            desc: 'Mean Absolute Error',
-            good: metrics.mae <= 10
+            value: metrics.mae !== null && metrics.mae !== undefined ? metrics.mae.toFixed(2) : '--',
+            desc: 'Mean Absolute Error (Lower is better)',
+            good: metrics.mae <= 10 && metrics.mae > 0,
+            icon: '📉'
         },
         {
             label: 'MAPE',
-            value: (metrics.mape || 0).toFixed(2) + '%',
-            desc: 'Mean Abs % Error',
-            good: metrics.mape <= 12
+            value: metrics.mape !== null && metrics.mape !== undefined ? metrics.mape.toFixed(2) + '%' : '--',
+            desc: 'Mean Abs % Error (Lower is better)',
+            good: metrics.mape <= 12 && metrics.mape > 0,
+            icon: '📈'
         }
     ];
     
@@ -492,12 +536,43 @@ function displayMetrics(data) {
         const card = document.createElement('div');
         card.className = 'metric-card ' + (metric.good ? 'good' : 'needs-improvement');
         card.innerHTML = `
+            <div class="metric-icon">${metric.icon}</div>
             <div class="metric-label">${metric.label}</div>
             <div class="metric-value">${metric.value}</div>
             <div class="metric-desc">${metric.desc}</div>
         `;
         container.appendChild(card);
     });
+    
+    // Add model comparison if available
+    if (data.comparison) {
+        const comparisonSection = document.createElement('div');
+        comparisonSection.className = 'model-comparison';
+        comparisonSection.innerHTML = '<h3>Model Comparison</h3>';
+        
+        const comparisonGrid = document.createElement('div');
+        comparisonGrid.className = 'comparison-grid';
+        
+        Object.keys(data.comparison).forEach(modelName => {
+            const modelMetrics = data.comparison[modelName];
+            if (modelMetrics && modelMetrics.r2_score !== null) {
+                const isBest = modelName === bestModelName;
+                const modelCard = document.createElement('div');
+                modelCard.className = 'model-comparison-card' + (isBest ? ' best-model' : '');
+                modelCard.innerHTML = `
+                    <div class="model-name">${modelName.replace(/_/g, ' ').toUpperCase()}${isBest ? ' ⭐' : ''}</div>
+                    <div class="model-metrics-small">
+                        <span>R²: ${modelMetrics.r2_score.toFixed(3)}</span>
+                        <span>RMSE: ${modelMetrics.rmse.toFixed(2)}</span>
+                    </div>
+                `;
+                comparisonGrid.appendChild(modelCard);
+            }
+        });
+        
+        comparisonSection.appendChild(comparisonGrid);
+        container.appendChild(comparisonSection);
+    }
 }
 
 function getAQIStatus(value) {

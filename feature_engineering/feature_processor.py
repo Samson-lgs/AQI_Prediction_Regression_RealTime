@@ -1,7 +1,54 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+try:
+    from sklearn.preprocessing import StandardScaler, MinMaxScaler
+except Exception:
+    # Minimal fallback implementations when scikit-learn is not available.
+    # These implementations cover the methods used in this module: fit, transform, fit_transform.
+    class StandardScaler:
+        def __init__(self):
+            self.mean_ = None
+            self.scale_ = None
+
+        def fit(self, X):
+            arr = np.asarray(X, dtype=float)
+            self.mean_ = np.nanmean(arr, axis=0)
+            self.scale_ = np.nanstd(arr, axis=0)
+            # avoid division by zero
+            self.scale_ = np.where(self.scale_ == 0, 1.0, self.scale_)
+            return self
+
+        def transform(self, X):
+            arr = np.asarray(X, dtype=float)
+            return (arr - self.mean_) / self.scale_
+
+        def fit_transform(self, X):
+            return self.fit(X).transform(X)
+
+    class MinMaxScaler:
+        def __init__(self, feature_range=(0, 1)):
+            self.feature_range = feature_range
+            self.data_min_ = None
+            self.data_range_ = None
+
+        def fit(self, X):
+            arr = np.asarray(X, dtype=float)
+            self.data_min_ = np.nanmin(arr, axis=0)
+            data_max = np.nanmax(arr, axis=0)
+            self.data_range_ = data_max - self.data_min_
+            # avoid division by zero
+            self.data_range_ = np.where(self.data_range_ == 0, 1.0, self.data_range_)
+            return self
+
+        def transform(self, X):
+            arr = np.asarray(X, dtype=float)
+            fr_min, fr_max = self.feature_range
+            X_std = (arr - self.data_min_) / self.data_range_
+            return X_std * (fr_max - fr_min) + fr_min
+
+        def fit_transform(self, X):
+            return self.fit(X).transform(X)
 from database.db_operations import DatabaseOperations
 from feature_engineering.data_cleaner import DataCleaner
 import logging
@@ -318,18 +365,8 @@ class FeatureProcessor:
         """Normalize features to standard scale"""
         try:
             df = df.copy()
-            
-            # Exclude non-numeric columns and identifiers
-            exclude_cols = ['timestamp', 'city', 'data_source', 'id', 'created_at', 
-                           'season', 'time_of_day']  # String categorical columns
-            
-            # Get only numeric columns for normalization
             feature_cols = [col for col in df.columns 
-                           if col not in exclude_cols and df[col].dtype in ['int64', 'float64']]
-            
-            if not feature_cols:
-                logger.warning("No numeric columns found for normalization")
-                return df
+                           if col not in ['timestamp', 'city', 'data_source', 'id', 'created_at']]
             
             if fit:
                 df[feature_cols] = self.scaler_features.fit_transform(
@@ -340,7 +377,7 @@ class FeatureProcessor:
                     df[feature_cols].fillna(0)
                 )
             
-            logger.info(f"Normalized {len(feature_cols)} numeric features")
+            logger.info("Features normalized")
             return df
         
         except Exception as e:

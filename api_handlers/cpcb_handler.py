@@ -4,14 +4,8 @@ import requests
 import pandas as pd
 from datetime import datetime
 import logging
-import sys
-import os
 from config.settings import CPCB_API_KEY, CPCB_BASE_URL, CITIES, PRIORITY_CITIES
 from typing import List, Dict, Optional, Union, Any
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from calculate_aqi_hybrid import calculate_aqi_from_pollutants
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -104,38 +98,22 @@ class CPCBHandler:
             parsed_data = []
             
             for record in records:
-                # Extract pollutant values
-                pm25 = self._safe_float(record.get('PM2.5'))
-                pm10 = self._safe_float(record.get('PM10'))
-                no2 = self._safe_float(record.get('NO2'))
-                so2 = self._safe_float(record.get('SO2'))
-                co = self._safe_float(record.get('CO'))
-                o3 = self._safe_float(record.get('O3'))
-                
-                # Calculate AQI using OpenWeather breakpoints (0-500 scale)
-                aqi_value = calculate_aqi_from_pollutants(
-                    so2=so2 or 0,
-                    no2=no2 or 0,
-                    pm10=pm10 or 0,
-                    pm25=pm25 or 0,
-                    o3=o3 or 0,
-                    co=co or 0
-                )
-                
                 data_point = {
                     'city': city,
                     'timestamp': datetime.now(),
-                    'pm25': pm25,
-                    'pm10': pm10,
-                    'no2': no2,
-                    'so2': so2,
-                    'co': co,
-                    'o3': o3,
-                    'aqi_value': aqi_value,  # 0-500 scale using OpenWeather breakpoints
+                    'pm25': self._safe_float(record.get('PM2.5')),
+                    'pm10': self._safe_float(record.get('PM10')),
+                    'no2': self._safe_float(record.get('NO2')),
+                    'so2': self._safe_float(record.get('SO2')),
+                    'co': self._safe_float(record.get('CO')),
+                    'o3': self._safe_float(record.get('O3')),
+                    'aqi_value': self._safe_float(record.get('AQI')),
                     'pollutant_dominant': record.get('Dominant_Parameter', '').strip(),
                     'location': record.get('Station', '').strip(),
                     'data_source': 'CPCB',
-                    'quality': self._get_quality_label(aqi_value)
+                    'quality': self._get_quality_label(
+                        self._safe_float(record.get('AQI'))
+                    )
                 }
                 parsed_data.append(data_point)
             
@@ -170,17 +148,17 @@ class CPCBHandler:
     @staticmethod        
     def _get_quality_label(aqi: Optional[float]) -> str:
         """
-        Get air quality label based on AQI value (0-500 scale)
+        Get air quality label based on AQI value
         
         Args:
-            aqi (Optional[float]): AQI value (0-500)
+            aqi (Optional[float]): AQI value
             
         Returns:
             str: Air quality label
         """
         if aqi is None:
             return 'Unknown'
-        
+            
         if aqi <= 50:
             return 'Good'
         elif aqi <= 100:

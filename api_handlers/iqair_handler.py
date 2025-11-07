@@ -3,14 +3,8 @@
 import requests
 from datetime import datetime
 import logging
-import sys
-import os
 from typing import Dict, List, Optional, Any
 from config.settings import IQAIR_API_KEY, IQAIR_BASE_URL, CITIES, PRIORITY_CITIES, OPENWEATHER_API_KEY
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from calculate_aqi_hybrid import calculate_aqi_from_pollutants
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -97,7 +91,6 @@ class IQAirHandler:
     def _parse_iqair_data(self, data: Dict[str, Any], city: str) -> Optional[Dict[str, Any]]:
         """
         Parse IQAir API response into standardized format
-        Uses hybrid system: OpenWeather breakpoints → 0-500 AQI scale
         
         Args:
             data (Dict[str, Any]): Raw data from IQAir API
@@ -111,29 +104,14 @@ class IQAirHandler:
             pollution = current.get('pollution', {})
             weather = current.get('weather', {})
             
-            # Extract pollutant values (IQAir provides limited data)
-            pm25 = pollution.get('pm25', 0)
-            pm10 = pollution.get('pm10', pm25 * 1.6 if pm25 else 0)  # Estimate PM10
-            
-            # IQAir doesn't provide other pollutants, use minimal values
-            so2 = 0
-            no2 = 0
-            co = 0
-            o3 = 0
-            
-            # Calculate AQI using hybrid system (0-500 scale)
-            aqi_value = calculate_aqi_from_pollutants(so2, no2, pm10, pm25, o3, co)
+            aqi_value = pollution.get('aqius')  # US AQI standard
             
             return {
                 'city': city,
                 'timestamp': datetime.now(),
-                'pm25': pm25,
-                'pm10': pm10,
-                'so2': so2,
-                'no2': no2,
-                'co': co,
-                'o3': o3,
-                'aqi_value': aqi_value,  # 0-500 scale
+                'pm25': pollution.get('pm25'),
+                'pm10': pollution.get('pm10'),
+                'aqi_value': aqi_value,
                 'quality': self._get_quality_label(aqi_value),
                 'temperature': weather.get('tp'),
                 'humidity': weather.get('hu'),
