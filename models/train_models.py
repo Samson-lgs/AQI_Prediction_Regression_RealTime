@@ -126,9 +126,22 @@ class ModelTrainer:
         timestamps = df['timestamp'].values
         
         # Prepare features and target
-        feature_cols = [col for col in df.columns 
-                       if col not in ['timestamp', 'city', 'data_source', 'id', 'created_at', 'aqi_value']]
-        X = df[feature_cols].values
+        # Exclude identifiers, target, and string categorical columns
+        exclude_cols = ['timestamp', 'city', 'data_source', 'id', 'created_at', 'aqi_value', 
+                       'season', 'time_of_day']  # String categories - already one-hot encoded
+        
+        feature_cols = [col for col in df.columns if col not in exclude_cols]
+        
+        # Ensure all feature columns are numeric
+        numeric_feature_cols = [col for col in feature_cols if df[col].dtype in ['int64', 'float64']]
+        
+        if not numeric_feature_cols:
+            logger.error(f"No numeric features found for {city}")
+            return None
+        
+        logger.info(f"Using {len(numeric_feature_cols)} numeric features for training")
+        
+        X = df[numeric_feature_cols].values
         y = df['aqi_value'].values
         
         # Time-series-aware split (NO SHUFFLING!)

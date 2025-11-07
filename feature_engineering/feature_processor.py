@@ -318,8 +318,18 @@ class FeatureProcessor:
         """Normalize features to standard scale"""
         try:
             df = df.copy()
+            
+            # Exclude non-numeric columns and identifiers
+            exclude_cols = ['timestamp', 'city', 'data_source', 'id', 'created_at', 
+                           'season', 'time_of_day']  # String categorical columns
+            
+            # Get only numeric columns for normalization
             feature_cols = [col for col in df.columns 
-                           if col not in ['timestamp', 'city', 'data_source', 'id', 'created_at']]
+                           if col not in exclude_cols and df[col].dtype in ['int64', 'float64']]
+            
+            if not feature_cols:
+                logger.warning("No numeric columns found for normalization")
+                return df
             
             if fit:
                 df[feature_cols] = self.scaler_features.fit_transform(
@@ -330,7 +340,7 @@ class FeatureProcessor:
                     df[feature_cols].fillna(0)
                 )
             
-            logger.info("Features normalized")
+            logger.info(f"Normalized {len(feature_cols)} numeric features")
             return df
         
         except Exception as e:
