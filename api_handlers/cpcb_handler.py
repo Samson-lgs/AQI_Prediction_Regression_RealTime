@@ -4,8 +4,13 @@ import requests
 import pandas as pd
 from datetime import datetime
 import logging
+import sys
+import os
 from config.settings import CPCB_API_KEY, CPCB_BASE_URL, CITIES, PRIORITY_CITIES
 from typing import List, Dict, Optional, Union, Any
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from calculate_aqi_hybrid import calculate_aqi_from_pollutants
 
 logging.basicConfig(level=logging.INFO)

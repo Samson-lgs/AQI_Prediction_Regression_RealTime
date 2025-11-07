@@ -1,8 +1,13 @@
 import requests
 from datetime import datetime
 import logging
+import sys
+import os
 from typing import Dict, List, Optional, Any, Tuple
 from config.settings import OPENWEATHER_API_KEY, OPENWEATHER_BASE_URL, CITIES
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from calculate_aqi_hybrid import calculate_aqi_from_pollutants
 
 logging.basicConfig(level=logging.INFO)
