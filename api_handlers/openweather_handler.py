@@ -18,7 +18,7 @@ class OpenWeatherHandler:
         logger.info(f"OpenWeather Handler initialized for {len(self.CITY_COORDINATES)} cities")
     
     # ==========================================
-    # ALL 56 INDIAN CITIES COORDINATES (MODIFIED)
+    # ALL INDIAN CITIES COORDINATES
     # ==========================================
     CITY_COORDINATES = {
         # North India
@@ -26,6 +26,9 @@ class OpenWeatherHandler:
         'Noida': (28.5921, 77.1845),
         'Ghaziabad': (28.6692, 77.4538),
         'Gurugram': (28.4595, 77.0266),
+        'Gurgaon': (28.4595, 77.0266),  # Same as Gurugram
+        'Faridabad': (28.4089, 77.3178),
+        'Greater Noida': (28.4744, 77.5040),
         'Chandigarh': (30.7333, 76.7794),
         'Jaipur': (26.9124, 75.7873),
         'Lucknow': (26.8467, 80.9462),
@@ -37,6 +40,22 @@ class OpenWeatherHandler:
         'Kota': (25.2138, 75.8648),
         'Jodhpur': (26.2389, 73.0243),
         'Udaipur': (24.5854, 73.7125),
+        'Meerut': (28.9845, 77.7064),
+        'Aligarh': (27.8974, 78.0880),
+        'Allahabad': (25.4358, 81.8463),
+        'Jalandhar': (31.3260, 75.5762),
+        'Bareilly': (28.3670, 79.4304),
+        'Moradabad': (28.8389, 78.7765),
+        'Sonipat': (28.9931, 77.0151),
+        'Panipat': (29.3909, 76.9635),
+        'Alwar': (27.5530, 76.6346),
+        'Bharatpur': (27.2152, 77.4883),
+        'Mathura': (27.4924, 77.6737),
+        'Rohtak': (28.8955, 76.5893),
+        'Rewari': (28.1990, 76.6189),
+        'Bhiwani': (28.7930, 76.1395),
+        'Bhiwadi': (28.2091, 76.8633),
+        'Srinagar': (34.0837, 74.7973),
         
         # South India
         'Bangalore': (12.9716, 77.5946),
@@ -53,6 +72,7 @@ class OpenWeatherHandler:
         'Madurai': (9.9252, 78.1198),
         'Salem': (11.6643, 78.1460),
         'Thiruvananthapuram': (8.5241, 76.9366),
+        'Warangal': (17.9784, 79.6005),
         
         # West India
         'Mumbai': (19.0760, 72.8777),
@@ -65,6 +85,10 @@ class OpenWeatherHandler:
         'Aurangabad': (19.8762, 75.3433),
         'Nagpur': (21.1458, 79.0882),
         'Thane': (19.2183, 72.9781),
+        'Navi Mumbai': (19.0330, 73.0297),
+        'Pimpri-Chinchwad': (18.6298, 73.7997),
+        'Solapur': (17.6599, 75.9064),
+        'Hubli-Dharwad': (15.3647, 75.1240),
         
         # East India
         'Kolkata': (22.5726, 88.3639),
@@ -75,6 +99,8 @@ class OpenWeatherHandler:
         'Bhubaneswar': (20.2961, 85.8245),
         'Jamshedpur': (22.8046, 86.1855),
         'Asansol': (23.6840, 86.9640),
+        'Dhanbad': (23.7957, 86.4304),
+        'Howrah': (22.5958, 88.2636),
         
         # Central India
         'Indore': (22.7196, 75.8577),
