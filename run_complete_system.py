@@ -47,7 +47,6 @@ def step_2_collect_data():
         from api_handlers.openweather_handler import OpenWeatherHandler
         from api_handlers.iqair_handler import IQAirHandler
         from database.db_operations import DatabaseOperations
-        from config.settings import PRIORITY_CITIES
         from datetime import datetime
         
         db = DatabaseOperations()
@@ -55,11 +54,14 @@ def step_2_collect_data():
         openweather = OpenWeatherHandler()
         iqair = IQAirHandler()
         
+        # Get all cities from OpenWeather handler
+        all_cities = list(openweather.CITY_COORDINATES.keys())
+        
         collected = 0
         
-        logger.info(f"Collecting data for {len(PRIORITY_CITIES)} priority cities...")
+        logger.info(f"Collecting data for {len(all_cities)} cities...")
         
-        for city in PRIORITY_CITIES:
+        for city in all_cities:
             logger.info(f"Fetching data for {city}...")
             
             # Try OpenWeather (most reliable)
