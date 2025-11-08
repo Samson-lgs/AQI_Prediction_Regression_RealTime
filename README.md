@@ -1,39 +1,42 @@
 # Air Quality Index Prediction System
 
-## Project Overview
-A comprehensive, production-ready AQI prediction system leveraging machine learning regression models and integrating real-time data from CPCB, OpenWeather, and IQAir APIs for 67 Indian cities. Features automated data collection, model training, and deployment on Render.com with GitHub Actions CI/CD.
+## Project Overview (Updated Nov 8, 2025)
+Unified (city-agnostic) AQI prediction system ingesting real-time pollution & weather data from CPCB, OpenWeather, and IQAir across 80+ Indian cities. Models now trained on combined multi-city data with robust median imputation instead of per‑city datasets. Daily automated retraining refreshes a tuned ensemble (XGBoost preferred) using the most recent 7‑day window.
 
 ## ✨ Key Features
 
 ### Data Collection & Processing
-- ✅ **Multi-source data integration** (CPCB, OpenWeather, IQAir)
-- ✅ **Parallel data collection** for 67 cities (4 workers, ~0.42s/city)
-- ✅ **Advanced data cleaning** with outlier detection and imputation
-- ✅ **100+ engineered features** (temporal, cyclical, lag, rolling windows)
-- ✅ **PostgreSQL time-series storage** with optimized indexes
+- ✅ Multi-source integration (CPCB, OpenWeather, IQAir)
+- ✅ Hourly parallel collection (ThreadPoolExecutor) for all configured cities (currently 82 unique)
+- ✅ Median-based imputation for core pollutant features (pm25, pm10, no2, so2, co, o3)
+- ✅ Percentile clipping for outlier robustness
+- ✅ Unified aggregated training dataset (recent 7 days) for model retraining
+- ✅ PostgreSQL time-series storage with connection pooling
 
 ### Machine Learning
-- ✅ **Four ML models**: Linear Regression, Random Forest, XGBoost, LSTM
-- ✅ **Time-series aware training** (no data leakage, chronological splits)
-- ✅ **Auto model selection** based on performance metrics
-- ✅ **42+ cities trained** with models ready for predictions
-- ✅ **Performance tracking** with R², RMSE, MAE, MAPE metrics
+- ✅ Unified training script: `scripts/train_models_render_last7d_tuned.py`
+- ✅ Models: Linear Regression (baseline), Random Forest, XGBoost (primary), optional LightGBM / CatBoost experiments
+- ✅ Chronological train/val/test split (60/20/20) to prevent temporal leakage
+- ✅ Median imputation saved to `models/saved_models/median_imputation.json` and reused at inference
+- ✅ Achieved Test R² ≈ 0.94 (XGBoost tuned) on 7‑day Render dataset (Nov 8, 2025)
+- ✅ Scheduled daily retrain at 02:00 via `backend/scheduler.py`
+- ✅ Metrics persisted as JSON alongside models
 
 ### Web Application
-- ✅ **Interactive dashboard** with real-time visualizations (Plotly.js)
-- ✅ **RESTful API** with Swagger documentation (/api/v1/docs)
-- ✅ **Real-time WebSocket updates** for live data streaming
-- ✅ **Alert system** with email/SMS notifications
-- ✅ **Mobile-responsive design** for all devices
+- ✅ RESTful API with Swagger docs (`/api/v1/docs`)
+- ✅ Rate limiting (500/day, 100/hour) with health & key endpoints exempt
+- ✅ Frontend dashboard served from `/` (static HTML/CSS/JS)
+- ✅ Email alert scaffolding with throttling (2h) and severity mapping
+- ❌ WebSockets currently disabled for stability (can re-enable later)
 
 ### Deployment & Automation
-- ✅ **Deployed on Render.com** (backend + frontend + database)
-- ✅ **GitHub Actions workflows** for automated retraining
-- ✅ **Docker containerization** for local development
-- ✅ **Weekly auto-retraining** (every Sunday at 2 AM UTC)
-- ✅ **Continuous data collection** (hourly updates)
+- ✅ Render.com deployment (backend + PostgreSQL + static frontend)
+- ✅ GitHub Actions daily unified retraining (updated workflow to use tuned script)
+- ✅ Docker / docker-compose for local reproducible environment
+- ✅ Hourly collection within `backend/main.py` / scheduler
+- ✅ Manual one-off retrain possible by running tuned script locally
 
-## Quick Start
+## Quick Start (Unified Model)
 
 ### Prerequisites
 - Python 3.9+
@@ -101,7 +104,7 @@ python database/reset_db.py
 
 ### Running the System
 
-#### 1. Data Collection (Continuous)
+#### 1. Hourly Data Collection (Continuous)
 ```bash
 # Start background data collector
 python backend/main.py
@@ -111,7 +114,18 @@ python backend/main.py --once
 ```
 This collects hourly data for all 67 cities from multiple APIs.
 
-#### 2. Train Models
+#### 2. Manual Unified Model Training (Tuned)
+```bash
+python scripts/train_models_render_last7d_tuned.py
+```
+This loads `render_pollution_last7d.csv` (export script required) and saves updated models + metrics under `models/saved_models/`.
+
+To prepare the 7‑day dataset from the Render DB (requires DATABASE_URL env):
+```bash
+python scripts/export_render_pollution_data.py --days 7 --sslmode require --outfile render_pollution_last7d.csv
+```
+
+#### (Legacy) Per-City Training (still available)
 ```bash
 # Check data coverage first
 python scripts/report_data_coverage.py
@@ -138,14 +152,14 @@ gunicorn --bind 0.0.0.0:5000 --workers 1 wsgi:app
 - **API Documentation**: http://localhost:5000/api/v1/docs
 - **API Endpoints**: http://localhost:5000/api/v1/
 
-#### 5. Import Historical Data (Optional - for quick training)
+#### 5. Import Historical Data (Optional)
 ```bash
 # Generate 90 days of synthetic historical data
 python scripts/import_historical_data.py
 ```
 This creates realistic training data for immediate model training.
 
-## Project Structure
+## Project Structure (Current Essentials)
 
 ```
 AQI_Prediction_Regression_RealTime/
@@ -190,12 +204,8 @@ AQI_Prediction_Regression_RealTime/
 │   ├── xgboost_model.py
 │   └── lstm_model.py
 ├── models/                    # Training & utilities
-│   ├── train_all_models.py   # Batch training script
-│   ├── train_models.py       # Core training logic
-│   ├── model_utils.py        # Model selection
-│   ├── time_series_cv.py     # Time-series validation
-│   ├── hyperparameter_tuning.py # Grid search
-│   └── trained_models/       # Saved models (168 files)
+│   ├── train_all_models.py   # Legacy per-city batch training (now median imputation)
+│   └── saved_models/         # Unified model artifacts (median_imputation.json + model files)
 ├── monitoring/                # Step 7: Continuous improvement
 │   ├── performance_monitor.py # Track model metrics
 │   ├── data_drift_detector.py # Detect distribution shifts
@@ -224,7 +234,7 @@ AQI_Prediction_Regression_RealTime/
 └── README.md                 # This file
 ```
 
-## API Endpoints
+## API Endpoints (Key)
 
 ### Base URL
 - **Local**: `http://localhost:5000/api/v1`
@@ -277,23 +287,18 @@ curl -X POST https://aqi-backend-api.onrender.com/api/v1/forecast/batch \
   -d '{"cities": ["Delhi", "Mumbai", "Bangalore"], "hours_ahead": 24}'
 ```
 
-## Current Performance Status (Nov 6, 2025)
+## Current Performance Status (Nov 8, 2025)
 
 ### Data Collection
-- **Total Records**: 2,328+ rows and growing
-- **Time Span**: 38 hours (Nov 4-6, 2025)
-- **Coverage**: 33 distinct hours collected
-- **Cities Active**: 66/67 cities (Hubli-Dharwad failed)
-- **Best Coverage**: 22/24 hours (91.7%) in last 24h
+- Hourly parallel ingestion active (scheduler + main pipeline)
+- Coverage improving toward multi-week stable window
+- Multi-source blending persisted to PostgreSQL
 
-### Model Training
-- **Cities Trained**: 42/67 cities successfully trained
-- **Total Models**: 168 model files (42 cities × 4 models)
-- **Best Performing Models**:
-  - Amritsar: R²=0.7938 (XGBoost) ⭐
-  - Agra: R²=0.6915 (Linear Regression)
-  - Aligarh: R²=0.5603 (XGBoost)
-  - Ahmedabad: R²=0.5016 (Random Forest)
+### Unified Model Training
+- Best tuned unified model (XGBoost): R² ≈ 0.94 (test) on recent 7‑day snapshot
+- Random Forest secondary: R² ≈ 0.93
+- Baseline Linear Regression: R² ≈ 0.45
+- Advanced heavy feature attempt (per-city scaling) deprioritized (lower R²)
 
 ### Performance Targets
 
@@ -306,7 +311,7 @@ curl -X POST https://aqi-backend-api.onrender.com/api/v1/forecast/batch \
 | **Cities Trained** | 42/67 | 60+/67 | 67/67 |
 | **Forecast Horizon** | 1-48 hours | 1-48 hours | 1-48 hours |
 
-**Note**: Model accuracy improves with more continuous hourly data. Current performance is expected with only 33 hours of data. Target R² > 0.85 achievable after 7+ days of continuous collection.
+**Note**: Unified approach exceeds prior per-city targets earlier; maintain data continuity for stability and monitor drift.
 
 ## Technologies Used
 
@@ -316,11 +321,10 @@ curl -X POST https://aqi-backend-api.onrender.com/api/v1/forecast/batch \
 - **Web Server**: Gunicorn (production)
 
 ### Machine Learning
-- **scikit-learn** 1.2.1 - Linear Regression, Random Forest
-- **XGBoost** 1.7.4 - Gradient Boosting
-- **TensorFlow/Keras** 2.12.0 - LSTM Neural Networks
-- **NumPy** 1.23.5 - Numerical computing
-- **Pandas** 1.5.3 - Data manipulation
+- scikit-learn (Linear Regression, Random Forest)
+- XGBoost (primary unified regressor)
+- LightGBM / CatBoost (experimental; not deployed)
+- NumPy / Pandas
 
 ### Frontend
 - **HTML5**, **CSS3**, **JavaScript**
@@ -337,7 +341,7 @@ curl -X POST https://aqi-backend-api.onrender.com/api/v1/forecast/batch \
 - **OpenWeather** - Weather and pollution data
 - **IQAir** - Global air quality data
 
-## 67 Indian Cities Covered
+## Cities Covered
 
 **Tier 1 Metro Cities (8 priority):**
 Delhi, Mumbai, Bangalore, Chennai, Kolkata, Hyderabad, Pune, Ahmedabad
@@ -444,6 +448,12 @@ For issues and questions:
 - **Documentation**: See DEPLOYMENT.md for detailed deployment instructions
 
 ## Future Enhancements
+1. API endpoint to trigger and stream retraining progress
+2. Automatic model hot-reload without server restart
+3. Feature importance dashboard for unified model
+4. Drift + anomaly detection integration (monitoring/ modules)
+5. Expand unified dataset window for seasonal stability
+6. LightGBM/CatBoost comparative periodic evaluation
 
 1. **Model Optimization**: Hyperparameter tuning with GridSearchCV
 2. **Real-time Alerts**: Email/SMS notifications for critical AQI levels
@@ -456,6 +466,6 @@ For issues and questions:
 
 ---
 
-**Last Updated**: November 6, 2025  
-**Version**: 1.0.0  
+**Last Updated**: November 8, 2025  
+**Version**: 1.1.0 (Unified Model)  
 **Status**: Production Ready ✅

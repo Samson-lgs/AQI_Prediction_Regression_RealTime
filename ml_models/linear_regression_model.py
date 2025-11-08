@@ -45,7 +45,8 @@ class LinearRegressionAQI:
             rmse = np.sqrt(mse)
             mae = mean_absolute_error(y_test, predictions)
             r2 = r2_score(y_test, predictions)
-            mape = np.mean(np.abs((y_test - predictions) / y_test)) * 100
+            safe_y = np.where(y_test == 0, 1e-6, y_test)
+            mape = np.mean(np.abs((y_test - predictions) / safe_y)) * 100
             
             metrics = {
                 'mse': mse,

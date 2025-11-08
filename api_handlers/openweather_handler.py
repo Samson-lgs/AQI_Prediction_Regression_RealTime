@@ -251,8 +251,18 @@ class OpenWeatherHandler:
                 o3 = pollution.get('o3')
                 
                 # Calculate proper AQI from pollutant concentrations (0-500 scale)
-                from api_handlers.aqi_calculator import calculate_aqi, get_aqi_category
-                aqi_value = calculate_aqi(pm25=pm25, pm10=pm10, no2=no2, so2=so2, co=co, o3=o3)
+                from api_handlers.aqi_calculator import calculate_aqi, calculate_india_aqi, get_aqi_category
+                
+                # Convert CO from μg/m³ to mg/m³ for India NAQI
+                # OpenWeather returns CO in μg/m³, but India NAQI expects mg/m³
+                co_mg = co / 1000 if co else None
+                
+                # Calculate both EPA and India NAQI
+                epa_aqi = calculate_aqi(pm25=pm25, pm10=pm10, no2=no2, so2=so2, co=co, o3=o3)
+                india_result = calculate_india_aqi(pm25=pm25, pm10=pm10, no2=no2, so2=so2, co=co_mg, o3=o3)
+                
+                # Use India AQI as primary for Indian cities
+                aqi_value = india_result['aqi']
                 category = get_aqi_category(aqi_value)
                 
                 return {
@@ -261,10 +271,14 @@ class OpenWeatherHandler:
                     'pm10': pm10,
                     'no2': no2,
                     'so2': so2,
-                    'co': co,
+                    'co': co_mg,  # Store CO in mg/m³ for consistency with India NAQI
                     'o3': o3,
                     'data_source': 'OpenWeather',
                     'aqi_value': aqi_value,
+                    'aqi_epa': epa_aqi,
+                    'aqi_india': india_result['aqi'],
+                    'dominant_pollutant': india_result.get('dominant_pollutant'),
+                    'sub_index': india_result.get('sub_index', {}),
                     'quality': category['category']
                 }
             return None

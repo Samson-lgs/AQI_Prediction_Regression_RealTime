@@ -16,11 +16,15 @@ const config = {
   HISTORY_DAYS: 7,
   REFRESH_INTERVAL: 300000, // 5 minutes in milliseconds
   
-  // AQI Category Thresholds
+  // AQI Standard
+  AQI_STANDARD: 'India NAQI', // India National AQI (CPCB Standard)
+  SHOW_AQI_STANDARD: true, // Display AQI standard badge
+  
+  // AQI Category Thresholds (India NAQI)
   AQI_CATEGORIES: {
     GOOD: { min: 0, max: 50, label: 'Good', color: '#00e400' },
     SATISFACTORY: { min: 51, max: 100, label: 'Satisfactory', color: '#ffff00' },
-    MODERATE: { min: 101, max: 200, label: 'Moderate', color: '#ff7e00' },
+    MODERATE: { min: 101, max: 200, label: 'Moderately Polluted', color: '#ff7e00' },
     POOR: { min: 201, max: 300, label: 'Poor', color: '#ff0000' },
     VERY_POOR: { min: 301, max: 400, label: 'Very Poor', color: '#8f3f97' },
     SEVERE: { min: 401, max: 500, label: 'Severe', color: '#7e0023' }

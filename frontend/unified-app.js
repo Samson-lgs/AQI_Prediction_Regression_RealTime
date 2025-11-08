@@ -15,6 +15,35 @@ let citiesPromise = null; // Promise to handle concurrent requests
 let fetchAttempts = 0; // Track fetch attempts
 let selectedCities = []; // Cities chosen for comparison
 
+// Add AQI standard badge on page load
+document.addEventListener('DOMContentLoaded', () => {
+    if (config?.SHOW_AQI_STANDARD && config?.AQI_STANDARD) {
+        const badge = document.createElement('div');
+        badge.id = 'aqiStandardBadge';
+        badge.style.cssText = `
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+        badge.innerHTML = `
+            <span style="font-size: 1.2em;">🇮🇳</span>
+            <span>AQI Standard: ${config.AQI_STANDARD}</span>
+        `;
+        document.body.appendChild(badge);
+    }
+});
+
 const container = document.getElementById('alertsList');
 if (container) {
     container.innerHTML = '<div class="no-data">Error loading alerts</div>';
@@ -879,13 +908,42 @@ async function loadPredictions() {
         }
         
         predictionData = await predictionResponse.json();
+
+        // Normalize backend forecast response structure so downstream UI code works
+        // Backend returns: { city, model_used, forecast_hours, predictions: [ {hour, forecast_timestamp, predicted_aqi, confidence} ] }
+        // Existing UI expects: predictionData.predicted_aqi (single value) and predictionData.forecast = [{timestamp, aqi, confidence}]
+        if (predictionData && Array.isArray(predictionData.predictions)) {
+            // Map predictions to expected 'forecast' array with unified keys
+            predictionData.forecast = predictionData.predictions.map(p => ({
+                hour: p.hour,
+                timestamp: p.forecast_timestamp,
+                aqi: p.predicted_aqi,
+                confidence: p.confidence
+            }));
+
+            // Choose a representative predicted AQI value for the comparison card:
+            // Use the prediction at the selected forecast horizon (default last hour requested) or first if unavailable.
+            const horizonIndex = Math.min((predictionData.forecast_hours || predictionData.forecast.length) - 1, predictionData.forecast.length - 1);
+            if (horizonIndex >= 0) {
+                predictionData.predicted_aqi = predictionData.forecast[horizonIndex].aqi;
+                predictionData.confidence = predictionData.forecast[horizonIndex].confidence;
+            } else {
+                predictionData.predicted_aqi = 0;
+            }
+        } else {
+            // Fallback to avoid runtime errors
+            predictionData.forecast = [];
+            if (typeof predictionData.predicted_aqi === 'undefined') {
+                predictionData.predicted_aqi = 0;
+            }
+        }
         
-        // Display all prediction components
-        displayCurrentVsPredicted();
-        displayPredictionChart();
-        displayPollutants();
-        displayHourlyForecast();
-        displayModelMetrics();
+    // Display all prediction components
+    displayCurrentVsPredicted();
+    displayPredictionChart();
+    displayPollutants();
+    displayHourlyForecast();
+    displayModelMetrics(city);
         
     } catch (error) {
         console.error('Error loading predictions:', error);
@@ -914,7 +972,14 @@ function displayCurrentVsPredicted() {
     
     if (currentAqiValue) currentAqiValue.textContent = currentAQI;
     if (currentAqiValue) currentAqiValue.className = `value large ${getAQIColorClass(currentAQI)}`;
-    if (currentAqiStatus) currentAqiStatus.textContent = getAQICategory(currentAQI);
+    if (currentAqiStatus) {
+        let statusText = getAQICategory(currentAQI);
+        // Add dominant pollutant if available
+        if (currentData.dominant_pollutant) {
+            statusText += ` (Primary: ${currentData.dominant_pollutant})`;
+        }
+        currentAqiStatus.textContent = statusText;
+    }
     if (currentTimestamp) currentTimestamp.textContent = new Date(currentData.timestamp).toLocaleString();
     
     // Update predicted values
@@ -960,6 +1025,9 @@ function displayPredictionChart() {
 function displayPollutants() {
     if (!currentData) return;
     
+    // Handle both old format (flat pollutants) and new format (nested pollutants object)
+    const pollutants = currentData.pollutants || currentData;
+    
     // Update individual pollutant values
     const pm25Value = document.getElementById('pm25Value');
     const pm10Value = document.getElementById('pm10Value');
@@ -968,12 +1036,85 @@ function displayPollutants() {
     const coValue = document.getElementById('coValue');
     const o3Value = document.getElementById('o3Value');
     
-    if (pm25Value) pm25Value.textContent = currentData.pm25 || 'N/A';
-    if (pm10Value) pm10Value.textContent = currentData.pm10 || 'N/A';
-    if (no2Value) no2Value.textContent = currentData.no2 || 'N/A';
-    if (so2Value) so2Value.textContent = currentData.so2 || 'N/A';
-    if (coValue) coValue.textContent = currentData.co || 'N/A';
-    if (o3Value) o3Value.textContent = currentData.o3 || 'N/A';
+    // Display pollutant concentrations
+    if (pm25Value) pm25Value.textContent = pollutants.pm25 ? pollutants.pm25.toFixed(2) : 'N/A';
+    if (pm10Value) pm10Value.textContent = pollutants.pm10 ? pollutants.pm10.toFixed(2) : 'N/A';
+    if (no2Value) no2Value.textContent = pollutants.no2 ? pollutants.no2.toFixed(2) : 'N/A';
+    if (so2Value) so2Value.textContent = pollutants.so2 ? pollutants.so2.toFixed(2) : 'N/A';
+    if (coValue) coValue.textContent = pollutants.co ? pollutants.co.toFixed(3) : 'N/A';
+    if (o3Value) o3Value.textContent = pollutants.o3 ? pollutants.o3.toFixed(2) : 'N/A';
+    
+    // Add sub-indices if available (shows AQI contribution of each pollutant)
+    if (currentData.sub_indices) {
+        const subIndices = currentData.sub_indices;
+        const dominantPollutant = currentData.dominant_pollutant;
+        
+        // Add sub-index badges to pollutant cards
+        const addSubIndexBadge = (elementId, pollutantKey, subIndexValue) => {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            
+            const parent = element.closest('.pollutant-card') || element.parentElement;
+            if (!parent) return;
+            
+            // Remove existing badge if any
+            const existingBadge = parent.querySelector('.sub-index-badge');
+            if (existingBadge) existingBadge.remove();
+            
+            // Create new badge
+            const badge = document.createElement('div');
+            badge.className = 'sub-index-badge';
+            badge.style.cssText = 'margin-top: 8px; padding: 4px 8px; border-radius: 6px; font-size: 0.85em; text-align: center;';
+            
+            if (subIndexValue) {
+                const isDominant = dominantPollutant && pollutantKey === dominantPollutant;
+                badge.style.background = isDominant ? '#fee2e2' : '#f3f4f6';
+                badge.style.color = isDominant ? '#dc2626' : '#6b7280';
+                badge.style.fontWeight = isDominant ? 'bold' : 'normal';
+                badge.textContent = `Sub-Index: ${subIndexValue}${isDominant ? ' ⚠️' : ''}`;
+            } else {
+                badge.style.background = '#f9fafb';
+                badge.style.color = '#9ca3af';
+                badge.textContent = 'Sub-Index: N/A';
+            }
+            
+            parent.appendChild(badge);
+        };
+        
+        addSubIndexBadge('pm25Value', 'PM2.5', subIndices['PM2.5']);
+        addSubIndexBadge('pm10Value', 'PM10', subIndices['PM10']);
+        addSubIndexBadge('no2Value', 'NO2', subIndices['NO2']);
+        addSubIndexBadge('so2Value', 'SO2', subIndices['SO2']);
+        addSubIndexBadge('coValue', 'CO', subIndices['CO']);
+        addSubIndexBadge('o3Value', 'O3', subIndices['O3']);
+    }
+    
+    // Add data source and comparison info at the bottom
+    const pollutantsSection = document.querySelector('.pollutants-grid') || document.getElementById('pollutantsContainer');
+    if (pollutantsSection && currentData.data_source) {
+        let sourceInfo = pollutantsSection.querySelector('.source-info');
+        if (!sourceInfo) {
+            sourceInfo = document.createElement('div');
+            sourceInfo.className = 'source-info';
+            sourceInfo.style.cssText = 'margin-top: 20px; padding: 12px; background: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 6px; font-size: 0.9em;';
+            pollutantsSection.appendChild(sourceInfo);
+        }
+        
+        let sourceText = `<strong>Data Source:</strong> ${currentData.data_source}`;
+        
+        if (currentData.sources_compared && currentData.sources_compared.length > 1) {
+            const comparisonText = currentData.sources_compared
+                .map(s => `${s.source}: ${s.aqi}`)
+                .join(', ');
+            sourceText += `<br><small style="color: #6b7280;">Sources compared: ${comparisonText} (showing highest)</small>`;
+        }
+        
+        if (currentData.note) {
+            sourceText += `<br><small style="color: #6b7280; font-style: italic;">${currentData.note}</small>`;
+        }
+        
+        sourceInfo.innerHTML = sourceText;
+    }
 }
 
 function displayHourlyForecast() {
@@ -1000,9 +1141,158 @@ function displayHourlyForecast() {
     }).join('');
 }
 
-function displayModelMetrics() {
-    // Model metrics display removed as not in current HTML
-    // Can be added later if needed
+async function displayModelMetrics(city) {
+    const container = document.getElementById('metricsContainer');
+    const activeModelEl = document.getElementById('activeModel');
+    if (!container) return;
+
+    // Show loading state
+    container.innerHTML = '<div class="loading">Loading model performance...</div>';
+
+    try {
+        // First get the actual model being used for predictions
+        const forecastResp = await fetch(`${API_BASE_URL}/forecast/${city}?hours=1`);
+        let actualModel = null;
+        if (forecastResp.ok) {
+            const forecastData = await forecastResp.json();
+            actualModel = forecastData.model_used;
+        }
+
+        // Fetch comparison info (determines best model)
+        const compareResp = await fetch(`${API_BASE_URL}/models/compare?city=${city}`);
+        let compareData = null;
+        if (compareResp.ok) {
+            compareData = await compareResp.json();
+        }
+
+        const bestModel = actualModel || compareData?.best_model || null;
+        const bestR2 = typeof compareData?.best_r2_score === 'number' ? compareData.best_r2_score : null;
+
+        if (activeModelEl) {
+            activeModelEl.textContent = bestModel ? bestModel.replace(/_/g, ' ').toUpperCase() : 'N/A';
+            // Add/update a small badge with best R² next to Active Model
+            const selector = document.querySelector('.model-selector');
+            if (selector) {
+                let r2Badge = document.getElementById('bestR2Badge');
+                if (!r2Badge) {
+                    r2Badge = document.createElement('span');
+                    r2Badge.id = 'bestR2Badge';
+                    r2Badge.style.marginLeft = '10px';
+                    r2Badge.style.fontSize = '0.9em';
+                    r2Badge.style.padding = '4px 8px';
+                    r2Badge.style.borderRadius = '6px';
+                    r2Badge.style.background = '#eef2ff';
+                    r2Badge.style.color = '#374151';
+                    selector.appendChild(r2Badge);
+                }
+                r2Badge.textContent = bestR2 !== null ? `R²: ${bestR2.toFixed(3)}` : 'R²: --';
+            }
+        }
+
+        if (!bestModel) {
+            container.innerHTML = '<p class="no-data">No model performance data available yet. Train models to see metrics.</p>';
+            return;
+        }
+
+        // Fetch performance for ONLY the active model
+        const perfResp = await fetch(`${API_BASE_URL}/models/performance/${city}?model=${bestModel}&days=30`);
+        let perfData = null;
+        if (perfResp.ok) {
+            perfData = await perfResp.json();
+        }
+
+        // Get metrics for the active model
+        const comparison = compareData?.comparison || {};
+        const activeMetrics = comparison[bestModel] || perfData?.metrics?.[0] || {};
+
+        if (!activeMetrics || Object.keys(activeMetrics).length === 0) {
+            container.innerHTML = `<p class="no-data">No performance data available for ${bestModel}. Train the model to see metrics.</p>`;
+            return;
+        }
+
+        // Build single card for active model only
+        const m = {
+            model_name: bestModel,
+            r2_score: activeMetrics.r2_score ?? null,
+            rmse: activeMetrics.rmse ?? null,
+            mae: activeMetrics.mae ?? null,
+            mape: activeMetrics.mape ?? null,
+            last_updated: activeMetrics.last_updated ?? null
+        };
+
+        const cardsHtml = (() => {
+            const isBest = true; // Always true since we're only showing the active model
+            const displayName = m.model_name ? m.model_name.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN MODEL';
+            const r2 = m.r2_score !== null && m.r2_score !== undefined ? m.r2_score.toFixed(3) : '--';
+            const rmse = m.rmse !== null && m.rmse !== undefined ? m.rmse.toFixed(2) : '--';
+            const mae = m.mae !== null && m.mae !== undefined ? m.mae.toFixed(2) : '--';
+            const mape = m.mape !== null && m.mape !== undefined ? m.mape.toFixed(2) + '%' : '--';
+            
+            // Detect suspiciously perfect metrics (likely overfitting or insufficient data)
+            const isPerfect = m.r2_score >= 0.999 && m.rmse <= 0.01 && m.mae <= 0.01;
+            const warningHtml = isPerfect ? `
+                <div class="metric-warning" style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 12px 0; border-radius: 6px;">
+                    <strong>⚠️ Warning: Suspiciously Perfect Metrics</strong>
+                    <p style="margin: 4px 0 0 0; font-size: 0.9em; color: #92400e;">
+                        R² = 1.0 usually indicates overfitting or insufficient training data. 
+                        The model may not generalize well to new data. 
+                        <strong>Collect more data (weeks/months)</strong> for reliable predictions.
+                    </p>
+                </div>
+            ` : '';
+            
+            return `
+                <div class="metric-card best-model-card">
+                    <div class="metric-header">
+                        <span class="model-name">${displayName} ⭐</span>
+                        ${m.last_updated ? `<span class="metric-updated">${m.last_updated}</span>` : ''}
+                    </div>
+                    ${warningHtml}
+                    <div class="metric-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">R²</span>
+                            <span class="metric-value">${r2}</span>
+                            <span class="metric-hint">Explained variance</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">RMSE</span>
+                            <span class="metric-value">${rmse}</span>
+                            <span class="metric-hint">Avg error magnitude</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">MAE</span>
+                            <span class="metric-value">${mae}</span>
+                            <span class="metric-hint">Mean abs error</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">MAPE</span>
+                            <span class="metric-value">${mape}</span>
+                            <span class="metric-hint">Percent error</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        })();
+
+        // Add legend/explanation
+        const legend = `
+            <div class="metrics-legend">
+                <p><strong>Active Model Performance:</strong> R² closer to 1 is better; RMSE/MAE lower is better; MAPE lower % is better.</p>
+            </div>
+        `;
+
+        container.innerHTML = legend + cardsHtml;
+
+        // Hide charts since we're only showing one model
+        const r2Chart = document.getElementById('modelR2Chart');
+        const errorChart = document.getElementById('modelErrorChart');
+        if (r2Chart) r2Chart.style.display = 'none';
+        if (errorChart) errorChart.style.display = 'none';
+
+    } catch (err) {
+        console.error('Error loading model metrics:', err);
+        container.innerHTML = '<div class="error">Failed to load model metrics.</div>';
+    }
 }
 
 // ============================================================================

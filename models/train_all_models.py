@@ -86,22 +86,29 @@ def fetch_city_dataframe(db: DatabaseOperations, city: str, days: int) -> pd.Dat
 
 
 def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """Select basic features and target for training; drop rows with NaNs."""
+    """Select basic features and target for training using median imputation (unified policy)."""
     feature_cols = ["pm25", "pm10", "no2", "so2", "co", "o3"]
     for col in feature_cols:
         if col not in df.columns:
             df[col] = np.nan
 
+    # Target
+    if "aqi" not in df.columns:
+        return pd.DataFrame(), pd.Series(dtype=float)
+    y = df["aqi"].copy()
+
+    # Keep only rows with target
+    valid_mask = y.notna()
+    df = df.loc[valid_mask].copy()
+    y = y.loc[valid_mask]
+
+    # Median imputation per feature
+    medians = {c: float(df[c].median()) for c in feature_cols}
+    for c in feature_cols:
+        df[c] = pd.to_numeric(df[c], errors='coerce')
+        df[c] = df[c].fillna(medians[c])
+
     X = df[feature_cols].copy()
-    y = df["aqi"] if "aqi" in df.columns else None
-
-    # Drop rows with missing target or any missing features
-    mask = y.notna()
-    X = X[mask]
-    y = y[mask]
-    X = X.dropna()
-    y = y.loc[X.index]
-
     return X, y
 
 
@@ -189,7 +196,7 @@ def parse_args():
     scope.add_argument("--city", type=str, help="Train a single city by name")
 
     p.add_argument("--days", type=int, default=7, help="How many days of data to use")
-    p.add_argument("--min-samples", type=int, default=100, help="Minimum samples required to train")
+    p.add_argument("--min-samples", type=int, default=500, help="Minimum samples required to train (recommended: 500+)")
     p.add_argument("--models", type=str, default="lr,rf,xgb", help="Comma-separated model keys: lr,rf,xgb")
     p.add_argument("--summary-file", type=str, default=str(SAVE_DIR / "training_summary.json"), help="Path to write JSON training summary")
     return p.parse_args()

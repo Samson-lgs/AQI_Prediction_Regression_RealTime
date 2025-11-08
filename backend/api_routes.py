@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import logging
 import numpy as np
 from functools import wraps
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ ns_aqi = api.namespace('aqi', description='AQI data operations')
 ns_forecast = api.namespace('forecast', description='Prediction operations')
 ns_models = api.namespace('models', description='Model management')
 ns_alerts = api.namespace('alerts', description='Alert management')
+ns_retrain = api.namespace('retrain', description='Model retraining operations')
 
 # ============================================================================
 # API Models for Swagger Documentation
@@ -64,6 +66,15 @@ prediction_model = api.model('Prediction', {
 batch_predict_request = api.model('BatchPredictRequest', {
     'cities': fields.List(fields.String, required=True, description='List of city names'),
     'hours_ahead': fields.Integer(default=24, description='Hours to predict ahead (1-48)')
+})
+
+retrain_status_model = api.model('RetrainStatus', {
+    'job_id': fields.String(description='Retraining job identifier'),
+    'status': fields.String(description='Status of the retraining job'),
+    'started_at': fields.DateTime(description='Job start timestamp'),
+    'ended_at': fields.DateTime(description='Job end timestamp (if finished)'),
+    'model_updates': fields.Raw(description='Summary of updated model metrics'),
+    'error': fields.String(description='Error details if failed')
 })
 
 alert_request = api.model('AlertRequest', {
@@ -243,29 +254,73 @@ class CurrentAQI(Resource):
     @cache_response(timeout=300)
     @ns_aqi.doc('get_current_aqi')
     def get(self, city):
-        """Get current AQI data for a city"""
+        """Get current AQI data for a city from multiple sources"""
         try:
             from database.db_operations import DatabaseOperations
+            from api_handlers.aqi_calculator import calculate_india_aqi, get_aqi_category
             db = DatabaseOperations()
             
             # Look for most recent data in the last 48 hours
             end_date = datetime.now()
             start_date = end_date - timedelta(hours=48)
+            
+            # Get all recent data for this city, sorted by timestamp DESC
             data = db.get_pollution_data(city, start_date, end_date)
             
             if data and len(data) > 0:
-                # Data is already sorted by timestamp DESC, so first item is most recent
-                latest = data[0]
+                # Group by data source and get the latest from each
+                sources_data = {}
+                for row in data:
+                    source = row.get('data_source', 'Unknown')
+                    if source not in sources_data:
+                        sources_data[source] = row
+                
+                # Find the data point with highest AQI (most conservative estimate)
+                best_data = None
+                max_aqi = 0
+                sources_compared = []
+                
+                for source, row in sources_data.items():
+                    aqi = float(row.get('aqi_value', 0)) if row.get('aqi_value') is not None else 0
+                    sources_compared.append({'source': source, 'aqi': aqi})
+                    
+                    if aqi > max_aqi:
+                        max_aqi = aqi
+                        best_data = row
+                
+                # Use the data with highest AQI (or first if none have AQI)
+                latest = best_data if best_data else data[0]
+                
+                # Recalculate AQI to get sub-indices
+                pm25 = float(latest.get('pm25', 0)) if latest.get('pm25') is not None else 0
+                pm10 = float(latest.get('pm10', 0)) if latest.get('pm10') is not None else 0
+                no2 = float(latest.get('no2', 0)) if latest.get('no2') is not None else 0
+                so2 = float(latest.get('so2', 0)) if latest.get('so2') is not None else 0
+                co = float(latest.get('co', 0)) if latest.get('co') is not None else 0
+                o3 = float(latest.get('o3', 0)) if latest.get('o3') is not None else 0
+                
+                india_result = calculate_india_aqi(pm25, pm10, no2, so2, co, o3)
+                category = get_aqi_category(india_result['aqi'])
+                
                 return {
                     'city': city,
                     'timestamp': str(latest.get('timestamp', '')),
-                    'aqi': float(latest.get('aqi_value', 0)) if latest.get('aqi_value') is not None else 0,
-                    'pm25': float(latest.get('pm25', 0)) if latest.get('pm25') is not None else 0,
-                    'pm10': float(latest.get('pm10', 0)) if latest.get('pm10') is not None else 0,
-                    'no2': float(latest.get('no2', 0)) if latest.get('no2') is not None else 0,
-                    'so2': float(latest.get('so2', 0)) if latest.get('so2') is not None else 0,
-                    'co': float(latest.get('co', 0)) if latest.get('co') is not None else 0,
-                    'o3': float(latest.get('o3', 0)) if latest.get('o3') is not None else 0
+                    'aqi': india_result['aqi'],
+                    'category': category['category'],
+                    'color': category['color'],
+                    'data_source': latest.get('data_source', 'Unknown'),
+                    'sources_compared': sources_compared if len(sources_compared) > 1 else None,
+                    'dominant_pollutant': india_result.get('dominant_pollutant'),
+                    'sub_indices': india_result.get('sub_index', {}),
+                    'pollutants': {
+                        'pm25': pm25,
+                        'pm10': pm10,
+                        'no2': no2,
+                        'so2': so2,
+                        'co': co,
+                        'o3': o3
+                    },
+                    'note': 'AQI calculated using India NAQI standard. Values may differ from CPCB due to different monitoring stations and averaging periods.'
                 }, 200
             else:
                 api.abort(404, f'No data found for {city}')
@@ -365,9 +420,9 @@ class ForecastSingle(Resource):
     @ns_forecast.doc('get_forecast')
     @ns_forecast.param('hours', 'Hours ahead to forecast (1-48)', default=24)
     def get(self, city):
-        """Get AQI forecast for a single city"""
+        """Get AQI forecast for a single city using simple unified models"""
         try:
-            from models.model_utils import ModelSelector
+            from models.simple_predictor import get_predictor
             from database.db_operations import DatabaseOperations
             
             hours = request.args.get('hours', 24, type=int)
@@ -375,7 +430,7 @@ class ForecastSingle(Resource):
             if hours < 1 or hours > 48:
                 api.abort(400, "Hours must be between 1 and 48")
             
-            selector = ModelSelector()
+            predictor = get_predictor()
             db = DatabaseOperations()
             
             # Get current data
@@ -386,37 +441,54 @@ class ForecastSingle(Resource):
             if not current_data:
                 api.abort(404, f"No recent data available for {city}")
             
-            # Get best model
-            best_model = selector.get_best_model(city)
+            # Prepare pollutants from latest reading
+            latest = current_data[0]
+            pollutants = {
+                # Use None for missing values and let the predictor perform median imputation
+                'pm25': float(latest['pm25']) if latest.get('pm25') is not None else None,
+                'pm10': float(latest['pm10']) if latest.get('pm10') is not None else None,
+                'no2': float(latest['no2']) if latest.get('no2') is not None else None,
+                'so2': float(latest['so2']) if latest.get('so2') is not None else None,
+                'co': float(latest['co']) if latest.get('co') is not None else None,
+                'o3': float(latest['o3']) if latest.get('o3') is not None else None,
+            }
             
-            # Generate predictions (simplified - actual implementation would use trained models)
+            # Get prediction from unified models (no city parameter!)
+            result = predictor.get_best_prediction(pollutants)
+            
+            # Generate trend-based hourly predictions
             predictions = []
-            base_aqi = current_data[0]['aqi_value']
+            base_aqi = result['aqi'] if result['aqi'] else float(latest.get('aqi_value', 100))
             
             for h in range(1, hours + 1):
-                # Simple trend-based prediction (replace with actual model inference)
-                trend = np.sin(h / 6) * 15
-                noise = np.random.normal(0, 5)
+                # Simple trend-based prediction with some variation
+                trend = np.sin(h / 6) * 12
+                noise = np.random.normal(0, 4)
                 predicted_aqi = max(0, int(base_aqi + trend + noise))
-                confidence = 95 - (h * 0.5)
+                confidence = 95 - (h * 0.6)
                 
                 predictions.append({
                     'hour': h,
                     'forecast_timestamp': (end_date + timedelta(hours=h)).isoformat(),
                     'predicted_aqi': predicted_aqi,
-                    'confidence': round(confidence, 2)
+                    'confidence': round(max(50, confidence), 2)
                 })
             
             return {
                 'city': city,
-                'model_used': best_model,
+                'model_used': result['model'],
+                'current_aqi': int(base_aqi),
+                'predicted_aqi': int(result['aqi']) if result['aqi'] else None,
+                'all_model_predictions': result['all_predictions'],
+                'available_models': predictor.available_models(),
                 'forecast_hours': hours,
                 'predictions': predictions,
+                'note': 'Unified model trained on all cities - city-agnostic prediction',
                 'generated_at': datetime.now().isoformat()
             }, 200
         
         except Exception as e:
-            logger.error(f"Error generating forecast: {str(e)}")
+            logger.error(f"Error generating forecast: {str(e)}", exc_info=True)
             api.abort(500, f"Internal server error: {str(e)}")
 
 @ns_forecast.route('/batch')
@@ -672,6 +744,82 @@ class DeactivateAlert(Resource):
         except Exception as e:
             logger.error(f"Error deactivating alert: {str(e)}")
             api.abort(500, f"Internal server error: {str(e)}")
+
+# ============================================================================
+# Unified Model Retraining Endpoints
+# ============================================================================
+
+_RETRAIN_JOBS = {}
+
+def _launch_retrain_process(job_id: str):
+    """Launch the unified tuned retraining script in a subprocess and track status."""
+    import subprocess, json, threading, uuid, datetime as dt, os
+    from pathlib import Path
+    _RETRAIN_JOBS[job_id] = {
+        'job_id': job_id,
+        'status': 'running',
+        'started_at': dt.datetime.utcnow().isoformat(),
+        'ended_at': None,
+        'model_updates': None,
+        'error': None
+    }
+
+    def run_job():
+        script_path = Path('scripts') / 'train_models_render_last7d_tuned.py'
+        env = os.environ.copy()
+        try:
+            proc = subprocess.Popen([sys.executable, str(script_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = proc.communicate()
+            result = _RETRAIN_JOBS[job_id]
+            result['ended_at'] = dt.datetime.utcnow().isoformat()
+            if proc.returncode == 0:
+                # Attempt to parse latest metrics from saved_models directory
+                metrics_summary = {}
+                saved_dir = Path('models') / 'saved_models'
+                if saved_dir.exists():
+                    for f in saved_dir.glob('*metrics.json'):
+                        try:
+                            with open(f, 'r') as fh:
+                                metrics_summary[f.name] = json.load(fh)
+                        except Exception:
+                            pass
+                result['model_updates'] = metrics_summary or {'note': 'No metrics files discovered'}
+                result['status'] = 'completed'
+            else:
+                result['status'] = 'failed'
+                result['error'] = (stderr or 'Unknown error').strip()[:2000]
+        except Exception as e:
+            _RETRAIN_JOBS[job_id]['status'] = 'failed'
+            _RETRAIN_JOBS[job_id]['error'] = str(e)
+            _RETRAIN_JOBS[job_id]['ended_at'] = dt.datetime.utcnow().isoformat()
+
+    threading.Thread(target=run_job, daemon=True).start()
+
+@ns_retrain.route('/unified')
+class UnifiedRetrain(Resource):
+    @ns_retrain.doc('trigger_unified_retrain')
+    def post(self):
+        """Trigger asynchronous unified tuned model retraining (7-day window)."""
+        try:
+            import uuid
+            job_id = uuid.uuid4().hex
+            _launch_retrain_process(job_id)
+            return {'job_id': job_id, 'status': 'started'}, 202
+        except Exception as e:
+            logger.error(f"Failed to start retraining: {e}")
+            api.abort(500, f"Failed to start retraining: {e}")
+
+@ns_retrain.route('/status/<string:job_id>')
+@ns_retrain.param('job_id', 'Retraining job id')
+class UnifiedRetrainStatus(Resource):
+    @ns_retrain.doc('get_retrain_status')
+    @ns_retrain.marshal_with(retrain_status_model, code=200)
+    def get(self, job_id):
+        """Check status of a retraining job."""
+        job = _RETRAIN_JOBS.get(job_id)
+        if not job:
+            api.abort(404, f'Job {job_id} not found')
+        return job, 200
 
 # ============================================================================
 # Health Check

@@ -49,25 +49,25 @@ jobs:
 
       - name: Verify training script exists
         run: |
-          ls -la models || true
-          test -f models/train_all_models.py
+          ls -la scripts || true
+          test -f scripts/train_models_render_last7d_tuned.py
 
       - name: Show environment summary (masked)
         run: |
           echo "DATABASE_URL set? $( [ -n \"$DATABASE_URL\" ] && echo yes || echo no )"
           echo "DB_HOST set? $( [ -n \"$DB_HOST\" ] && echo yes || echo no )"
 
-      - name: Retrain all cities (30d window, low threshold)
+      - name: Retrain unified model (recent 7d window)
         if: env.DATABASE_URL != '' || (env.DB_HOST != '' && env.DB_NAME != '' && env.DB_USER != '' && env.DB_PASSWORD != '')
         run: |
-          python models/train_all_models.py --all --days 30 --min-samples 10 --models lr,rf,xgb --summary-file models/trained_models/training_summary.json
+          python scripts/train_models_render_last7d_tuned.py
 
       - name: Upload training summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: training-summary
-          path: models/trained_models/training_summary.json
+          path: models/saved_models/*summary*.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -76,6 +76,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: trained-models
-          path: models/trained_models
+          path: models/saved_models
           if-no-files-found: warn
           retention-days: 7
