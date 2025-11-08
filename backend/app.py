@@ -57,8 +57,10 @@ def create_app():
         try:
             # Exempt health endpoints and critical endpoints used by frontend
             exempt_paths = ['/health', '/api/v1/health', '/api/v1/cities']
-            # Also exempt current AQI endpoint (used heavily by dashboard)
-            if request.path in exempt_paths or request.path.startswith('/api/v1/aqi/current'):
+            # Also exempt current AQI and forecast endpoints (used heavily by dashboard)
+            if (request.path in exempt_paths or 
+                request.path.startswith('/api/v1/aqi/current') or 
+                request.path.startswith('/api/v1/forecast')):
                 return True
             return False
         except Exception:
@@ -154,7 +156,7 @@ def create_app():
     logger.info("  ✗ WebSocket real-time updates (disabled for stability)")
     logger.info("  ✗ Redis caching (disabled for free tier)")
     logger.info("  ✓ Rate limiting (500/day, 100/hour)")
-    logger.info("  ✓ /api/v1/cities and /api/v1/aqi/current/* exempt from rate limits")
+    logger.info("  ✓ Exempt from rate limits: /cities, /aqi/current/*, /forecast/*")
     logger.info("  ✓ CORS enabled for all origins")
     logger.info("=" * 70)
     

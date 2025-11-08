@@ -855,15 +855,32 @@ async function loadPredictions() {
     }
     
     try {
+        // Show loading indicators
+        const currentAqiValue = document.getElementById('currentAqiValue');
+        const predictedAqiValue = document.getElementById('predictedAqiValue');
+        if (currentAqiValue) currentAqiValue.textContent = 'Loading...';
+        if (predictedAqiValue) predictedAqiValue.textContent = 'Loading...';
+        
         // Load current AQI
         const currentResponse = await fetch(`${API_BASE_URL}/aqi/current/${city}`);
+        
+        if (!currentResponse.ok) {
+            throw new Error(`Failed to load current AQI: ${currentResponse.status} ${currentResponse.statusText}`);
+        }
+        
         currentData = await currentResponse.json();
         
         // Load prediction
-    // Corrected to /forecast/ namespace (previously /aqi/forecast/ caused 404)
-    const predictionResponse = await fetch(`${API_BASE_URL}/forecast/${city}?hours=48`);
+        // Corrected to /forecast/ namespace (previously /aqi/forecast/ caused 404)
+        const predictionResponse = await fetch(`${API_BASE_URL}/forecast/${city}?hours=48`);
+        
+        if (!predictionResponse.ok) {
+            throw new Error(`Failed to load forecast: ${predictionResponse.status} ${predictionResponse.statusText}`);
+        }
+        
         predictionData = await predictionResponse.json();
         
+        // Display all prediction components
         displayCurrentVsPredicted();
         displayPredictionChart();
         displayPollutants();
@@ -872,7 +889,14 @@ async function loadPredictions() {
         
     } catch (error) {
         console.error('Error loading predictions:', error);
-        alert('Error loading predictions. Please try again.');
+        
+        // Show user-friendly error message
+        const currentAqiValue = document.getElementById('currentAqiValue');
+        const predictedAqiValue = document.getElementById('predictedAqiValue');
+        if (currentAqiValue) currentAqiValue.textContent = 'Error';
+        if (predictedAqiValue) predictedAqiValue.textContent = 'Error';
+        
+        alert(`Error loading predictions for ${city}:\n${error.message}\n\nPlease try again or select a different city.`);
     }
 }
 
