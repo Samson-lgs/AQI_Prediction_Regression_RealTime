@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AQI Prediction System - India</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%8C%8D%3C/text%3E%3C/svg%3E">
+    
+    <!-- Leaflet CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Plotly for Charts -->
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <link rel="stylesheet" href="unified-styles.css">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <div class="logo">
+                <span class="logo-icon">🌍</span>
+                <span class="logo-text">AQI India</span>
+            </div>
+            <div class="nav-links">
+                <a href="#home" class="nav-link active" onclick="showSection('home')">Home</a>
+                <a href="#live" class="nav-link" onclick="showSection('live')">Live Dashboard</a>
+                <a href="#forecast" class="nav-link" onclick="showSection('forecast')">Predictions</a>
+                <a href="#about" class="nav-link" onclick="showSection('about')">About</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Home Section -->
+    <section id="home-section" class="page-section active">
+        <div class="hero">
+            <div class="hero-content">
+                <h1 class="hero-title">Real-Time Air Quality Intelligence</h1>
+                <p class="hero-subtitle">Monitor, Predict, and Stay Safe with India's Most Comprehensive AQI Platform</p>
+                <div class="hero-stats">
+                    <div class="stat-card">
+                        <div class="stat-number" id="totalCities">96</div>
+                        <div class="stat-label">Cities Monitored</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">48h</div>
+                        <div class="stat-label">Forecast Range</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">5</div>
+                        <div class="stat-label">ML Models</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="currentAvgAQI">--</div>
+                        <div class="stat-label">National Avg AQI</div>
+                    </div>
+                </div>
+                <div class="hero-actions">
+                    <button class="btn btn-primary btn-large" onclick="showSection('live')">
+                        🗺️ View Live Map
+                    </button>
+                    <button class="btn btn-secondary btn-large" onclick="showSection('forecast')">
+                        🔮 Get Predictions
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="features-section">
+            <div class="container">
+                <h2 class="section-title">Powerful Features</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🗺️</div>
+                        <h3>Interactive Map</h3>
+                        <p>Real-time AQI visualization across 96 Indian cities with color-coded markers</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📈</div>
+                        <h3>Historical Trends</h3>
+                        <p>Analyze air quality patterns over 7, 14, or 30 days with interactive charts</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔮</div>
+                        <h3>AI Predictions</h3>
+                        <p>48-hour AQI forecasts using 5 advanced machine learning algorithms</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚖️</div>
+                        <h3>City Comparison</h3>
+                        <p>Compare up to 6 cities side-by-side with detailed metrics</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔔</div>
+                        <h3>Smart Alerts</h3>
+                        <p>Email notifications when AQI exceeds your custom thresholds</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💊</div>
+                        <h3>Health Guidance</h3>
+                        <p>Personalized activity recommendations based on current air quality</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="current-conditions">
+            <div class="container">
+                <h2 class="section-title">Current Conditions - Top Cities</h2>
+                <div id="topCitiesGrid" class="cities-grid">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live Dashboard Section -->
+    <section id="live-section" class="page-section">
+        <div class="container">
+            <div class="section-header">
+                <h1>🗺️ Live Air Quality Dashboard</h1>
+                <p>Real-time monitoring, trends, comparisons, and alerts</p>
+            </div>
+
+            <div class="dashboard-tabs">
+                <button class="tab-btn active" onclick="switchDashboardTab('map')">🗺️ Live Map</button>
+                <button class="tab-btn" onclick="switchDashboardTab('trends')">📈 Historical Trends</button>
+                <button class="tab-btn" onclick="switchDashboardTab('comparison')">⚖️ City Comparison</button>
+                <button class="tab-btn" onclick="switchDashboardTab('alerts')">🔔 Alerts & Health</button>
+            </div>
+
+            <!-- Tab 1: Live Map -->
+            <div id="dashboard-map" class="dashboard-tab-content active">
+                <div class="card">
+                    <h2>🗺️ Real-Time AQI Map of India</h2>
+                    <p class="card-subtitle">Color-coded markers show current air quality. Click any marker for details.</p>
+                    <div id="map" style="height: 600px; border-radius: 10px;"></div>
+                </div>
+
+                <div class="card">
+                    <h2>📊 City Rankings</h2>
+                    <div id="rankingsChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Historical Trends -->
+            <div id="dashboard-trends" class="dashboard-tab-content">
+                <div class="card">
+                    <h2>📈 Historical AQI Trends</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="trendCity">Select City:</label>
+                            <select id="trendCity" class="form-control" onchange="loadHistoricalTrends()">
+                                <option value="">Loading cities...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="trendDays">Time Period:</label>
+                            <select id="trendDays" class="form-control" onchange="loadHistoricalTrends()">
+                                <option value="7">Last 7 Days</option>
+                                <option value="14">Last 14 Days</option>
+                                <option value="30" selected>Last 30 Days</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="aqiTrendChart" style="min-height: 400px;"></div>
+                    <div id="pollutantsTrendChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Multi-City Comparison -->
+            <div id="dashboard-comparison" class="dashboard-tab-content">
+                <div class="card">
+                    <h2>⚖️ Compare Multiple Cities</h2>
+                    <p class="card-subtitle">Select up to 6 cities to compare their air quality metrics</p>
+                    <div class="selector-group" id="citySelectors"></div>
+                    <div class="comparison-grid" id="comparisonGrid"></div>
+                    <div id="comparisonChart" style="min-height: 400px;"></div>
+                </div>
+            </div>
+
+            <!-- Tab 4: Alerts & Health -->
+            <div id="dashboard-alerts" class="dashboard-tab-content">
+                <div class="card">
+                    <h2>🔔 Set Up Email Alerts</h2>
+                    <form id="alertForm" class="alert-form" onsubmit="createAlert(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="alertCity">City:</label>
+                                <select id="alertCity" class="form-control" required>
+                                    <option value="">Select a city...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="alertEmail">Email Address:</label>
+                                <input type="email" id="alertEmail" class="form-control" placeholder="your.email@example.com" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="alertThreshold">AQI Threshold:</label>
+                                <input type="number" id="alertThreshold" class="form-control" min="0" max="500" placeholder="e.g., 100" required>
+                                <small class="form-hint">You'll be notified when AQI exceeds this value</small>
+                            </div>
+                            <div class="form-group" style="align-self: flex-end;">
+                                <button type="submit" class="btn btn-primary">Create Alert</button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <h3 style="margin: 30px 0 15px;">Your Active Alerts</h3>
+                    <ul class="alert-list" id="alertsList"></ul>
+                </div>
+
+                <div class="card">
+                    <h2>💊 Health Impact & Recommendations</h2>
+                    <div class="form-group">
+                        <label for="healthCity">Select City:</label>
+                        <select id="healthCity" class="form-control" onchange="loadHealthRecommendations()">
+                            <option value="">Select a city...</option>
+                        </select>
+                    </div>
+                    <div id="healthContent"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Forecast/Predictions Section -->
+    <section id="forecast-section" class="page-section">
+        <div class="container">
+            <div class="section-header">
+                <h1>🔮 AQI Prediction & Forecast</h1>
+                <p>48-hour air quality predictions powered by machine learning</p>
+            </div>
+
+            <div class="forecast-controls card">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="forecastCity">Select City:</label>
+                        <select id="forecastCity" class="form-control">
+                            <option value="">Select a city...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="forecastHours">Forecast Period:</label>
+                        <select id="forecastHours" class="form-control">
+                            <option value="6">6 Hours Ahead</option>
+                            <option value="12">12 Hours Ahead</option>
+                            <option value="24" selected>24 Hours Ahead</option>
+                            <option value="48">48 Hours Ahead</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="align-self: flex-end;">
+                        <button id="refreshForecastBtn" class="btn btn-primary" onclick="loadForecast()">
+                            Get Forecast
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current vs Predicted Comparison -->
+            <div class="card">
+                <h2>📊 Current vs Predicted AQI</h2>
+                <div class="prediction-comparison">
+                    <div class="comparison-item current">
+                        <div class="label">Current AQI</div>
+                        <div id="currentAqiValue" class="value large">--</div>
+                        <div id="currentAqiStatus" class="status">--</div>
+                        <div class="timestamp" id="currentTimestamp">--</div>
+                    </div>
+                    <div class="comparison-arrow">→</div>
+                    <div class="comparison-item predicted">
+                        <div class="label">Predicted AQI (<span id="predictionHours">24</span>h)</div>
+                        <div id="predictedAqiValue" class="value large">--</div>
+                        <div id="predictedAqiStatus" class="status">--</div>
+                        <div class="confidence">Confidence: <span id="confidenceValue">--</span>%</div>
+                    </div>
+                </div>
+                <div id="aqiChange" class="change-indicator">--</div>
+            </div>
+
+            <!-- 48-Hour Forecast Chart -->
+            <div class="card">
+                <h2>🔮 48-Hour AQI Prediction Forecast</h2>
+                <div class="chart-controls">
+                    <label>
+                        <input type="checkbox" id="showHistorical" checked> Show Historical Data
+                    </label>
+                    <label>
+                        <input type="checkbox" id="showConfidence" checked> Show Confidence Interval
+                    </label>
+                </div>
+                <div id="forecastChart" style="min-height: 500px;"></div>
+            </div>
+
+            <!-- Current Pollutants -->
+            <div class="card">
+                <h2>🧪 Current Pollutant Levels</h2>
+                <div class="pollutants-grid">
+                    <div class="pollutant-item">
+                        <span class="label">PM2.5</span>
+                        <span id="pm25Value" class="value">--</span>
+                        <span class="unit">µg/m³</span>
+                    </div>
+                    <div class="pollutant-item">
+                        <span class="label">PM10</span>
+                        <span id="pm10Value" class="value">--</span>
+                        <span class="unit">µg/m³</span>
+                    </div>
+                    <div class="pollutant-item">
+                        <span class="label">NO₂</span>
+                        <span id="no2Value" class="value">--</span>
+                        <span class="unit">µg/m³</span>
+                    </div>
+                    <div class="pollutant-item">
+                        <span class="label">SO₂</span>
+                        <span id="so2Value" class="value">--</span>
+                        <span class="unit">µg/m³</span>
+                    </div>
+                    <div class="pollutant-item">
+                        <span class="label">CO</span>
+                        <span id="coValue" class="value">--</span>
+                        <span class="unit">µg/m³</span>
+                    </div>
+                    <div class="pollutant-item">
+                        <span class="label">O₃</span>
+                        <span id="o3Value" class="value">--</span>
+                        <span class="unit">µg/m³</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hourly Predictions -->
+            <div class="card">
+                <h2>⏰ Hourly Predictions (Next 24 Hours)</h2>
+                <div class="table-container">
+                    <table id="hourlyTable">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Predicted AQI</th>
+                                <th>Category</th>
+                                <th>Change</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hourlyTableBody">
+                            <tr><td colspan="4" class="no-data">Select a city and click "Get Forecast"</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Model Performance -->
+            <div class="card">
+                <h2>🎯 Prediction Model Performance</h2>
+                <div class="model-selector">
+                    <label>Active Model: <strong id="activeModel">XGBoost</strong></label>
+                </div>
+                <div id="metricsContainer" class="metrics-grid"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about-section" class="page-section">
+        <div class="container">
+            <div class="about-content">
+                <h1>About AQI Prediction System</h1>
+                
+                <div class="card">
+                    <h2>🎯 Mission</h2>
+                    <p>To provide accurate, real-time air quality information and predictions to help Indians make informed decisions about their health and daily activities.</p>
+                </div>
+
+                <div class="card">
+                    <h2>🔬 Technology Stack</h2>
+                    <div class="tech-grid">
+                        <div class="tech-item">
+                            <strong>Backend:</strong> Flask, Python, PostgreSQL
+                        </div>
+                        <div class="tech-item">
+                            <strong>ML Models:</strong> XGBoost, Random Forest, LSTM, Linear Regression, Ensemble
+                        </div>
+                        <div class="tech-item">
+                            <strong>Data Sources:</strong> OpenWeather API, IQAir, CPCB
+                        </div>
+                        <div class="tech-item">
+                            <strong>Frontend:</strong> JavaScript, Leaflet.js, Plotly.js
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📊 AQI Color Scale</h2>
+                    <div class="aqi-scale">
+                        <div class="aqi-scale-item" style="background: #00e400;">
+                            <strong>0-50</strong><br>Good
+                        </div>
+                        <div class="aqi-scale-item" style="background: #ffff00; color: #333;">
+                            <strong>51-100</strong><br>Moderate
+                        </div>
+                        <div class="aqi-scale-item" style="background: #ff7e00;">
+                            <strong>101-150</strong><br>Unhealthy (Sensitive)
+                        </div>
+                        <div class="aqi-scale-item" style="background: #ff0000;">
+                            <strong>151-200</strong><br>Unhealthy
+                        </div>
+                        <div class="aqi-scale-item" style="background: #8f3f97;">
+                            <strong>201-300</strong><br>Very Unhealthy
+                        </div>
+                        <div class="aqi-scale-item" style="background: #7e0023;">
+                            <strong>301-500</strong><br>Hazardous
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📈 Features</h2>
+                    <ul class="features-list">
+                        <li>✅ Real-time AQI monitoring for 96 Indian cities</li>
+                        <li>✅ 48-hour predictions with 5 ML algorithms</li>
+                        <li>✅ Interactive maps with color-coded markers</li>
+                        <li>✅ Historical trend analysis (7-30 days)</li>
+                        <li>✅ Multi-city comparison tools</li>
+                        <li>✅ Email alert system</li>
+                        <li>✅ Health recommendations and guidance</li>
+                        <li>✅ RESTful API with Swagger documentation</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>AQI India</h3>
+                    <p>Real-time air quality intelligence for a healthier India</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="#home" onclick="showSection('home')">Home</a></li>
+                        <li><a href="#live" onclick="showSection('live')">Live Dashboard</a></li>
+                        <li><a href="#forecast" onclick="showSection('forecast')">Predictions</a></li>
+                        <li><a href="/api/v1/docs" target="_blank">API Docs</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Resources</h3>
+                    <ul>
+                        <li><a href="https://github.com" target="_blank">GitHub</a></li>
+                        <li><a href="#" onclick="alert('Documentation coming soon!')">Documentation</a></li>
+                        <li><a href="#about" onclick="showSection('about')">About</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 AQI Prediction System. Built with ❤️ for India.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="config.js"></script>
+    <script src="unified-app.js"></script>
+</body>
+</html>
