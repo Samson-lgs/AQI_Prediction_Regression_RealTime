@@ -3,17 +3,22 @@
    ============================================================================ */
 
 // API Configuration
+
 const API_BASE_URL = config?.API_BASE_URL || 'http://localhost:5000/api/v1';
 
 // Global State
 let currentMap = null;
-let selectedCities = [];
 let currentData = null;
 let predictionData = null;
 let citiesCache = null; // Cache cities to avoid repeated API calls
 let citiesPromise = null; // Promise to handle concurrent requests
 let fetchAttempts = 0; // Track fetch attempts
+let selectedCities = []; // Cities chosen for comparison
 
+const container = document.getElementById('alertsList');
+if (container) {
+    container.innerHTML = '<div class="no-data">Error loading alerts</div>';
+}
 // Helper function to get cities (with caching, promise deduplication, and retry)
 async function getCities() {
     // If we have cached data, return it immediately
@@ -451,12 +456,17 @@ async function loadHistoricalTrends() {
     
     try {
         const response = await fetch(`${API_BASE_URL}/aqi/history/${city}?days=${days}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
         const data = await response.json();
         
-        if (!data || data.length === 0) {
+        if (!data || !Array.isArray(data) || data.length === 0) {
             const aqiChart = document.getElementById('aqiTrendChart');
             if (aqiChart) {
-                aqiChart.innerHTML = '<div class="no-data">No historical data available</div>';
+                aqiChart.innerHTML = '<div class="no-data">No historical data available for this city</div>';
             }
             return;
         }
@@ -640,11 +650,14 @@ async function loadUserAlerts() {
     
     try {
         const response = await fetch(`${API_BASE_URL}/alerts/list/${city}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const alerts = await response.json();
         
         const container = document.getElementById('alertsList');
         
-        if (!alerts || alerts.length === 0) {
+        if (!alerts || !Array.isArray(alerts) || alerts.length === 0) {
             container.innerHTML = '<div class="no-data">No active alerts</div>';
             return;
         }
@@ -668,6 +681,10 @@ async function loadUserAlerts() {
         `;
     } catch (error) {
         console.error('Error loading alerts:', error);
+        const container = document.getElementById('alertsList');
+        if (container) {
+            container.innerHTML = '<div class="no-data">Error loading alerts</div>';
+        }
     }
 }
 
@@ -843,7 +860,8 @@ async function loadPredictions() {
         currentData = await currentResponse.json();
         
         // Load prediction
-        const predictionResponse = await fetch(`${API_BASE_URL}/aqi/forecast/${city}?hours=48`);
+    // Corrected to /forecast/ namespace (previously /aqi/forecast/ caused 404)
+    const predictionResponse = await fetch(`${API_BASE_URL}/forecast/${city}?hours=48`);
         predictionData = await predictionResponse.json();
         
         displayCurrentVsPredicted();
@@ -1011,6 +1029,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load cities for forecast selector (with small delay)
     setTimeout(() => loadCitiesForForecast(), 200);
 });
+
+// Expose functions for inline handlers defined in HTML
+window.showSection = showSection;
+window.switchDashboardTab = switchDashboardTab;
+window.loadForecast = loadForecast;
+window.toggleCitySelection = toggleCitySelection;
+window.createAlert = createAlert;
+window.deactivateAlert = deactivateAlert;
+window.loadHistoricalTrends = loadHistoricalTrends;
+window.loadUserAlerts = loadUserAlerts;
+window.loadHealthRecommendations = loadHealthRecommendations;
 
 async function loadCitiesForComparison() {
     try {
