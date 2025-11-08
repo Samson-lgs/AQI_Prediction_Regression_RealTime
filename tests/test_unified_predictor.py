@@ -4,25 +4,37 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+# ensure project root and common source folders are on sys.path for imports and linters
+_paths_to_add = [PROJECT_ROOT, PROJECT_ROOT / "src", PROJECT_ROOT / "models"]
+for _p in _paths_to_add:
+    _p_str = str(_p)
+    if _p.exists() and _p_str not in sys.path:
+        sys.path.insert(0, _p_str)
 
-try:
-    from models.unified_predictor import get_predictor
-except ImportError:
+import importlib
+import importlib.util
+
+get_predictor = None
+# try standard and alternative module paths
+for _mod in ("models.unified_predictor", "src.models.unified_predictor"):
     try:
-        # try alternative package layout
-        from src.models.unified_predictor import get_predictor
-    except ImportError:
-        # fallback: load module directly from file path (works even if package __init__.py is missing)
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "unified_predictor",
-            str(PROJECT_ROOT / "models" / "unified_predictor.py"),
-        )
-        unified = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(unified)
-        get_predictor = unified.get_predictor
+        mod = importlib.import_module(_mod)
+        if hasattr(mod, "get_predictor"):
+            get_predictor = getattr(mod, "get_predictor")
+            break
+    except Exception:
+        # ignore and try next location
+        continue
+
+# fallback: load module directly from file path (works even if package __init__.py is missing)
+if get_predictor is None:
+    spec = importlib.util.spec_from_file_location(
+        "unified_predictor",
+        str(PROJECT_ROOT / "models" / "unified_predictor.py"),
+    )
+    unified = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(unified)
+    get_predictor = unified.get_predictor
 
 from database.db_operations import DatabaseOperations
 from datetime import datetime, timedelta

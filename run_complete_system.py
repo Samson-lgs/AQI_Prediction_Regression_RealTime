@@ -143,8 +143,47 @@ def step_3_export_data():
     print_banner("STEP 3: DATA EXPORT")
     
     try:
-        from export_data_to_csv import DataExporter
-        
+        # Try multiple import locations to handle different project layouts
+        # Attempt multiple import strategies using dynamic import to avoid static linter errors
+        import importlib
+        DataExporter = None
+
+        # 1) Top-level module
+        try:
+            module = importlib.import_module('export_data_to_csv')
+            DataExporter = getattr(module, 'DataExporter', None)
+        except Exception:
+            DataExporter = None
+
+        # 2) Common utils subpackage
+        if DataExporter is None:
+            try:
+                module = importlib.import_module('utils.export_data_to_csv')
+                DataExporter = getattr(module, 'DataExporter', None)
+            except Exception:
+                DataExporter = None
+
+        # 3) Package-relative import (when this file is part of a package)
+        if DataExporter is None:
+            try:
+                module = importlib.import_module('.export_data_to_csv', package=__package__)
+                DataExporter = getattr(module, 'DataExporter', None)
+            except Exception:
+                DataExporter = None
+
+        # 4) Fallback: load module file located next to this script
+        if DataExporter is None:
+            import importlib.util
+            module_path = os.path.join(os.path.dirname(__file__), 'export_data_to_csv.py')
+            if os.path.isfile(module_path):
+                spec = importlib.util.spec_from_file_location("export_data_to_csv", module_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                DataExporter = getattr(module, 'DataExporter', None)
+
+        if DataExporter is None:
+            raise ImportError("Could not import DataExporter from export_data_to_csv (tried multiple locations)")
+
         exporter = DataExporter()
         
         logger.info("Exporting current AQI data...")
