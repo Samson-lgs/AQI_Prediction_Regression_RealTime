@@ -4,11 +4,11 @@
 const config = {
   // Auto-detect environment: use production backend if deployed on GitHub Pages
   API_BASE_URL: window.location.hostname.includes('github.io') 
-    ? 'https://your-backend-url.onrender.com/api/v1'  // UPDATE with your actual backend URL
+    ? 'https://aqi-backend-api.onrender.com/api/v1'  // Render backend URL
     : 'http://localhost:5000/api/v1',
   
   // Manual override: Uncomment to force production URL
-  // API_BASE_URL: 'https://your-backend-url.onrender.com/api/v1',
+  // API_BASE_URL: 'https://aqi-backend-api.onrender.com/api/v1',
   
   // Configuration
   DEFAULT_CITY: 'Delhi',
