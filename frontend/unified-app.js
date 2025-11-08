@@ -12,8 +12,9 @@ let currentData = null;
 let predictionData = null;
 let citiesCache = null; // Cache cities to avoid repeated API calls
 let citiesPromise = null; // Promise to handle concurrent requests
+let fetchAttempts = 0; // Track fetch attempts
 
-// Helper function to get cities (with caching and promise deduplication)
+// Helper function to get cities (with caching, promise deduplication, and retry)
 async function getCities() {
     // If we have cached data, return it immediately
     if (citiesCache) {
@@ -25,32 +26,59 @@ async function getCities() {
         return citiesPromise;
     }
     
-    // Start a new request
+    // Start a new request with retry logic
     citiesPromise = (async () => {
-        try {
-            const response = await fetch(`${API_BASE_URL}/cities`);
-            
-            if (!response.ok) {
-                console.warn('Failed to load cities:', response.status);
-                citiesPromise = null; // Reset so we can retry later
-                return [];
+        let retries = 3;
+        let delay = 1000; // Start with 1 second delay
+        
+        for (let i = 0; i < retries; i++) {
+            try {
+                // Add delay between retries
+                if (i > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; // Exponential backoff
+                }
+                
+                const response = await fetch(`${API_BASE_URL}/cities`);
+                
+                // If rate limited, try again
+                if (response.status === 429) {
+                    console.warn(`Rate limited (429), retry ${i + 1}/${retries}...`);
+                    continue;
+                }
+                
+                if (!response.ok) {
+                    console.warn('Failed to load cities:', response.status);
+                    if (i === retries - 1) {
+                        citiesPromise = null;
+                        return [];
+                    }
+                    continue;
+                }
+                
+                const cities = await response.json();
+                
+                if (!Array.isArray(cities)) {
+                    console.warn('Cities response is not an array:', cities);
+                    citiesPromise = null;
+                    return [];
+                }
+                
+                citiesCache = cities;
+                fetchAttempts = 0;
+                return cities;
+                
+            } catch (error) {
+                console.error(`Error fetching cities (attempt ${i + 1}/${retries}):`, error);
+                if (i === retries - 1) {
+                    citiesPromise = null;
+                    return [];
+                }
             }
-            
-            const cities = await response.json();
-            
-            if (!Array.isArray(cities)) {
-                console.warn('Cities response is not an array:', cities);
-                citiesPromise = null; // Reset so we can retry later
-                return [];
-            }
-            
-            citiesCache = cities;
-            return cities;
-        } catch (error) {
-            console.error('Error fetching cities:', error);
-            citiesPromise = null; // Reset so we can retry later
-            return [];
         }
+        
+        citiesPromise = null;
+        return [];
     })();
     
     return citiesPromise;

@@ -45,7 +45,7 @@ def create_app():
     limiter = Limiter(
         app=app,
         key_func=get_remote_address,
-        default_limits=["200 per day", "50 per hour"],
+        default_limits=["500 per day", "100 per hour"],  # Increased for development
         storage_uri=os.getenv('REDIS_URL', 'memory://'),
         strategy="fixed-window"
     )
@@ -53,10 +53,11 @@ def create_app():
     # Apply rate limiting to API routes
     @limiter.request_filter
     def exempt_health_check():
-        """Exempt health checks from rate limiting"""
+        """Exempt health checks and cities endpoint from rate limiting"""
         try:
-            # Exempt both root and versioned health endpoints
-            return request.path in ('/health', '/api/v1/health')
+            # Exempt health endpoints and critical city list endpoint
+            exempt_paths = ['/health', '/api/v1/health', '/api/v1/cities']
+            return request.path in exempt_paths
         except Exception:
             return False
     
@@ -132,7 +133,8 @@ def create_app():
     logger.info("  ✓ RESTful API with Swagger docs (/api/v1/docs)")
     logger.info("  ✗ WebSocket real-time updates (disabled for stability)")
     logger.info("  ✗ Redis caching (disabled for free tier)")
-    logger.info("  ✓ Rate limiting (200/day, 50/hour)")
+    logger.info("  ✓ Rate limiting (500/day, 100/hour)")
+    logger.info("  ✓ /api/v1/cities endpoint exempt from rate limits")
     logger.info("  ✓ CORS enabled for all origins")
     logger.info("=" * 70)
     
