@@ -53,11 +53,14 @@ def create_app():
     # Apply rate limiting to API routes
     @limiter.request_filter
     def exempt_health_check():
-        """Exempt health checks and cities endpoint from rate limiting"""
+        """Exempt health checks and frequently used endpoints from rate limiting"""
         try:
-            # Exempt health endpoints and critical city list endpoint
+            # Exempt health endpoints and critical endpoints used by frontend
             exempt_paths = ['/health', '/api/v1/health', '/api/v1/cities']
-            return request.path in exempt_paths
+            # Also exempt current AQI endpoint (used heavily by dashboard)
+            if request.path in exempt_paths or request.path.startswith('/api/v1/aqi/current'):
+                return True
+            return False
         except Exception:
             return False
     
@@ -87,8 +90,25 @@ def create_app():
     def health():
         return {'status': 'ok', 'message': 'AQI Backend API is running'}, 200
     
-    # API root endpoint
+    # Serve frontend files
     @app.route('/')
+    def serve_frontend():
+        """Serve the main dashboard"""
+        frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend')
+        return send_from_directory(frontend_path, 'index_new.html')
+    
+    @app.route('/<path:path>')
+    def serve_static(path):
+        """Serve static frontend files (CSS, JS, etc.)"""
+        frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend')
+        try:
+            return send_from_directory(frontend_path, path)
+        except:
+            # If file not found in frontend, return 404
+            return {'error': 'File not found'}, 404
+    
+    # API info endpoint
+    @app.route('/api')
     def api_root():
         return {
             'message': 'AQI Prediction API',
@@ -134,7 +154,7 @@ def create_app():
     logger.info("  ✗ WebSocket real-time updates (disabled for stability)")
     logger.info("  ✗ Redis caching (disabled for free tier)")
     logger.info("  ✓ Rate limiting (500/day, 100/hour)")
-    logger.info("  ✓ /api/v1/cities endpoint exempt from rate limits")
+    logger.info("  ✓ /api/v1/cities and /api/v1/aqi/current/* exempt from rate limits")
     logger.info("  ✓ CORS enabled for all origins")
     logger.info("=" * 70)
     
