@@ -7,7 +7,23 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from models.unified_predictor import get_predictor
+try:
+    from models.unified_predictor import get_predictor
+except ImportError:
+    try:
+        # try alternative package layout
+        from src.models.unified_predictor import get_predictor
+    except ImportError:
+        # fallback: load module directly from file path (works even if package __init__.py is missing)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "unified_predictor",
+            str(PROJECT_ROOT / "models" / "unified_predictor.py"),
+        )
+        unified = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(unified)
+        get_predictor = unified.get_predictor
+
 from database.db_operations import DatabaseOperations
 from datetime import datetime, timedelta
 
