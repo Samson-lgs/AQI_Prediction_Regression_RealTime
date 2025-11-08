@@ -1,0 +1,81 @@
+name: Daily Model Retraining
+
+on:
+  schedule:
+    # Run once every 24 hours at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: model-retraining
+  cancel-in-progress: false
+
+jobs:
+  retrain:
+    name: Retrain AQI Models
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    # Empty defaults quiet local linters; provide real values via repo/env secrets
+    env:
+      DATABASE_URL: ""
+      DB_HOST: ""
+      DB_PORT: ""
+      DB_NAME: ""
+      DB_USER: ""
+      DB_PASSWORD: ""
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify training script exists
+        run: |
+          ls -la models || true
+          test -f models/train_all_models.py
+
+      - name: Show environment summary (masked)
+        run: |
+          echo "DATABASE_URL set? $( [ -n \"$DATABASE_URL\" ] && echo yes || echo no )"
+          echo "DB_HOST set? $( [ -n \"$DB_HOST\" ] && echo yes || echo no )"
+
+      - name: Retrain all cities (30d window, low threshold)
+        if: env.DATABASE_URL != '' || (env.DB_HOST != '' && env.DB_NAME != '' && env.DB_USER != '' && env.DB_PASSWORD != '')
+        run: |
+          python models/train_all_models.py --all --days 30 --min-samples 10 --models lr,rf,xgb --summary-file models/trained_models/training_summary.json
+
+      - name: Upload training summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-summary
+          path: models/trained_models/training_summary.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload trained models
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models
+          path: models/trained_models
+          if-no-files-found: warn
+          retention-days: 7
