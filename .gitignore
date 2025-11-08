@@ -15,3 +15,13 @@ build/
 venv/
 secrets.json
 *.pdb
+# Large artifacts and datasets (do not commit)
+models/saved_models/
+catboost_info/
+render_pollution_last7d.csv
+data/external/
+*.tfevents
+*.tsv
+*.pkl
+*.cbm
+*.txt
