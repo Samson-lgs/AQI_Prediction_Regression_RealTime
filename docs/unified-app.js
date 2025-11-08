@@ -263,7 +263,7 @@ async function loadTopCities() {
 function viewCityDetails(cityName) {
     // Switch to live dashboard and load city data
     showSection('live');
-    switchTab('map');
+    switchDashboardTab('map');
     
     // Center map on city if available
     if (currentMap) {
