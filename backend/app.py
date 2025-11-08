@@ -101,11 +101,10 @@ def create_app():
     
     @app.route('/<path:path>')
     def serve_static(path):
-        """Serve static frontend files (CSS, JS, etc.)"""
         frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend')
         try:
             return send_from_directory(frontend_path, path)
-        except:
+        except Exception:
             # If file not found in frontend, return 404
             return {'error': 'File not found'}, 404
     
