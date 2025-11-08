@@ -57,10 +57,11 @@ def create_app():
         try:
             # Exempt health endpoints and critical endpoints used by frontend
             exempt_paths = ['/health', '/api/v1/health', '/api/v1/cities']
-            # Also exempt current AQI and forecast endpoints (used heavily by dashboard)
+            # Also exempt current AQI, forecast, and coordinates endpoints (used heavily by dashboard)
             if (request.path in exempt_paths or 
                 request.path.startswith('/api/v1/aqi/current') or 
-                request.path.startswith('/api/v1/forecast')):
+                request.path.startswith('/api/v1/forecast') or
+                request.path.startswith('/api/v1/cities/coordinates')):
                 return True
             return False
         except Exception:
