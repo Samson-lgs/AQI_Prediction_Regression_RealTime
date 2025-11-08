@@ -120,16 +120,17 @@ def create_app():
             'cities': '/api/v1/cities'
         }, 200
     
-    # Cache stats endpoint
+    # Cache stats endpoint (simplified - cache_manager removed)
     @app.route('/api/v1/cache/stats')
     @limiter.exempt
     def cache_stats():
-        try:
-            from backend.cache_manager import get_cache_info
-            return get_cache_info(), 200
-        except Exception as e:
-            return {'error': str(e)}, 500
-    
+        """Cache stats endpoint - caching disabled on free tier"""
+        return {
+            'status': 'disabled',
+            'message': 'Caching is disabled on free tier',
+            'backend': 'memory'
+        }, 200
+
     # Error handlers
     @app.errorhandler(404)
     def not_found(error):

@@ -20,15 +20,8 @@ import os
 import sys
 from datetime import timedelta
 
-# Optional utilities
-try:
-    from backend.email_utils import send_email
-except Exception:
-    # Allow import when running as module from project root
-    try:
-        from email_utils import send_email
-    except Exception:
-        send_email = None
+# Email functionality disabled (email_utils module removed)
+send_email = None
 
 # Websocket handler doesn't exist yet - stub it out
 def broadcast_alert(*args, **kwargs):
