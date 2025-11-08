@@ -11,34 +11,49 @@ let selectedCities = [];
 let currentData = null;
 let predictionData = null;
 let citiesCache = null; // Cache cities to avoid repeated API calls
+let citiesPromise = null; // Promise to handle concurrent requests
 
-// Helper function to get cities (with caching)
+// Helper function to get cities (with caching and promise deduplication)
 async function getCities() {
+    // If we have cached data, return it immediately
     if (citiesCache) {
         return citiesCache;
     }
     
-    try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        
-        if (!response.ok) {
-            console.warn('Failed to load cities:', response.status);
-            return [];
-        }
-        
-        const cities = await response.json();
-        
-        if (!Array.isArray(cities)) {
-            console.warn('Cities response is not an array:', cities);
-            return [];
-        }
-        
-        citiesCache = cities;
-        return cities;
-    } catch (error) {
-        console.error('Error fetching cities:', error);
-        return [];
+    // If a request is already in progress, wait for it
+    if (citiesPromise) {
+        return citiesPromise;
     }
+    
+    // Start a new request
+    citiesPromise = (async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/cities`);
+            
+            if (!response.ok) {
+                console.warn('Failed to load cities:', response.status);
+                citiesPromise = null; // Reset so we can retry later
+                return [];
+            }
+            
+            const cities = await response.json();
+            
+            if (!Array.isArray(cities)) {
+                console.warn('Cities response is not an array:', cities);
+                citiesPromise = null; // Reset so we can retry later
+                return [];
+            }
+            
+            citiesCache = cities;
+            return cities;
+        } catch (error) {
+            console.error('Error fetching cities:', error);
+            citiesPromise = null; // Reset so we can retry later
+            return [];
+        }
+    })();
+    
+    return citiesPromise;
 }
 
 // ============================================================================
@@ -955,15 +970,18 @@ function getAQICategory(aqi) {
 // INITIALIZATION
 // ============================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Pre-load cities cache to avoid multiple simultaneous requests
+    await getCities();
+    
     // Show home section by default
     showSection('home');
     
-    // Load cities for comparison selector
-    loadCitiesForComparison();
+    // Load cities for comparison selector (with small delay)
+    setTimeout(() => loadCitiesForComparison(), 100);
     
-    // Load cities for forecast selector
-    loadCitiesForForecast();
+    // Load cities for forecast selector (with small delay)
+    setTimeout(() => loadCitiesForForecast(), 200);
 });
 
 async function loadCitiesForComparison() {
