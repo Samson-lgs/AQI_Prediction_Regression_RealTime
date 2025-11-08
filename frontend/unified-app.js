@@ -10,6 +10,36 @@ let currentMap = null;
 let selectedCities = [];
 let currentData = null;
 let predictionData = null;
+let citiesCache = null; // Cache cities to avoid repeated API calls
+
+// Helper function to get cities (with caching)
+async function getCities() {
+    if (citiesCache) {
+        return citiesCache;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/cities`);
+        
+        if (!response.ok) {
+            console.warn('Failed to load cities:', response.status);
+            return [];
+        }
+        
+        const cities = await response.json();
+        
+        if (!Array.isArray(cities)) {
+            console.warn('Cities response is not an array:', cities);
+            return [];
+        }
+        
+        citiesCache = cities;
+        return cities;
+    } catch (error) {
+        console.error('Error fetching cities:', error);
+        return [];
+    }
+}
 
 // ============================================================================
 // NAVIGATION
@@ -55,15 +85,20 @@ function showSection(sectionName) {
 
 async function loadHomeStats() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
+        
+        if (cities.length === 0) return;
         
         // Update total cities
-        document.getElementById('totalCities').textContent = cities.length;
+        const totalCitiesEl = document.getElementById('totalCities');
+        if (totalCitiesEl) totalCitiesEl.textContent = cities.length;
         
-        // Get current AQI for all cities and calculate average
-        const aqiPromises = cities.map(city => 
-            fetch(`${API_BASE_URL}/aqi/current/${city.name}`).then(r => r.json())
+        // Get current AQI for a sample of cities (to avoid too many requests)
+        const sampleCities = cities.slice(0, 10);
+        const aqiPromises = sampleCities.map(city => 
+            fetch(`${API_BASE_URL}/aqi/current/${city.name}`)
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null)
         );
         
         const allAqi = await Promise.all(aqiPromises);
@@ -73,14 +108,17 @@ async function loadHomeStats() {
             const avgAqi = Math.round(
                 validAqi.reduce((sum, data) => sum + data.aqi, 0) / validAqi.length
             );
-            document.getElementById('currentAvgAQI').textContent = avgAqi;
+            const avgAqiEl = document.getElementById('currentAvgAQI');
+            if (avgAqiEl) avgAqiEl.textContent = avgAqi;
         }
         
         // Update data sources (hardcoded as per system design)
-        document.getElementById('dataSources').textContent = '3';
+        const dataSourcesEl = document.getElementById('dataSources');
+        if (dataSourcesEl) dataSourcesEl.textContent = '3';
         
         // Update active alerts (mock for now)
-        document.getElementById('activeAlerts').textContent = '0';
+        const activeAlertsEl = document.getElementById('activeAlerts');
+        if (activeAlertsEl) activeAlertsEl.textContent = '0';
         
     } catch (error) {
         console.error('Error loading home stats:', error);
@@ -89,13 +127,17 @@ async function loadHomeStats() {
 
 async function loadTopCities() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
         
-        // Get AQI for all cities
-        const cityDataPromises = cities.slice(0, 8).map(async city => {
+        if (cities.length === 0) return;
+        
+        // Get AQI for top 8 cities only (to avoid too many requests)
+        const topCities = cities.slice(0, 8);
+        const cityDataPromises = topCities.map(async city => {
             try {
                 const aqiResponse = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
+                if (!aqiResponse.ok) return null;
+                
                 const aqiData = await aqiResponse.json();
                 return {
                     name: city.name,
@@ -109,11 +151,19 @@ async function loadTopCities() {
         
         const cityData = (await Promise.all(cityDataPromises)).filter(d => d !== null);
         
+        if (cityData.length === 0) {
+            const grid = document.getElementById('topCitiesGrid');
+            if (grid) grid.innerHTML = '<div class="no-data">Loading city data...</div>';
+            return;
+        }
+        
         // Sort by AQI descending
         cityData.sort((a, b) => b.aqi - a.aqi);
         
         // Display in grid
         const grid = document.getElementById('topCitiesGrid');
+        if (!grid) return;
+        
         grid.innerHTML = cityData.map(city => `
             <div class="city-card" onclick="viewCityDetails('${city.name}')">
                 <div class="city-name">${city.name}</div>
@@ -126,8 +176,10 @@ async function loadTopCities() {
         
     } catch (error) {
         console.error('Error loading top cities:', error);
-        document.getElementById('topCitiesGrid').innerHTML = 
-            '<div class="error">Unable to load city data</div>';
+        const grid = document.getElementById('topCitiesGrid');
+        if (grid) {
+            grid.innerHTML = '<div class="error">Unable to load city data</div>';
+        }
     }
 }
 
@@ -162,13 +214,16 @@ function initializeDashboard() {
 
 async function loadCityRankings() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
+        
+        if (cities.length === 0) return;
         
         // Get AQI for top cities
         const cityPromises = cities.slice(0, 20).map(async (city) => {
             try {
                 const aqiResponse = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
+                if (!aqiResponse.ok) return null;
+                
                 const aqiData = await aqiResponse.json();
                 return {
                     city: city.name,
@@ -206,8 +261,7 @@ async function loadCityRankings() {
 
 async function loadCitiesForTrends() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
         
         const select = document.getElementById('trendCity');
         if (!select) return;
@@ -226,8 +280,7 @@ async function loadCitiesForTrends() {
 
 async function loadCitiesForAlerts() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
         
         const select = document.getElementById('alertCity');
         if (!select) return;
@@ -632,8 +685,7 @@ async function loadHealthRecommendations() {
 
 async function loadCitiesForHealth() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
         
         const select = document.getElementById('healthCity');
         if (!select) return;
@@ -916,8 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadCitiesForComparison() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
         
         const container = document.getElementById('citySelectors');
         if (!container) return;
@@ -934,8 +985,7 @@ async function loadCitiesForComparison() {
 
 async function loadCitiesForForecast() {
     try {
-        const response = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await response.json();
+        const cities = await getCities();
         
         const select = document.getElementById('forecastCity');
         if (!select) return;
