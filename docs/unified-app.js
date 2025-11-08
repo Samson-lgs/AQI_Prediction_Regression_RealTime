@@ -749,7 +749,7 @@ async function loadHealthRecommendations() {
         
         const health = getHealthImpact(data.aqi);
         
-        const healthContainer = document.getElementById('healthInfo');
+        const healthContainer = document.getElementById('healthContent');
         if (!healthContainer) return;
         
         healthContainer.innerHTML = `
@@ -765,7 +765,7 @@ async function loadHealthRecommendations() {
         `;
     } catch (error) {
         console.error('Error loading health recommendations:', error);
-        const healthContainer = document.getElementById('healthInfo');
+        const healthContainer = document.getElementById('healthContent');
         if (healthContainer) {
             healthContainer.innerHTML = '<div class="error">Error loading health recommendations</div>';
         }
