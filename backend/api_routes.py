@@ -112,6 +112,40 @@ class CityList(Resource):
             logger.error(f"Error fetching cities: {str(e)}")
             api.abort(500, f"Internal server error: {str(e)}")
 
+@ns_cities.route('/coordinates/<string:city>')
+@ns_cities.param('city', 'City name')
+class CityCoordinates(Resource):
+    @ns_cities.doc('get_city_coordinates')
+    def get(self, city):
+        """Get latitude and longitude for a city"""
+        try:
+            from api_handlers.openweather_handler import OpenWeatherHandler
+            handler = OpenWeatherHandler()
+            
+            # Check if city exists in our coordinates map
+            coords = handler.CITY_COORDINATES.get(city)
+            
+            if coords:
+                return {
+                    'city': city,
+                    'lat': coords[0],
+                    'lon': coords[1]
+                }, 200
+            else:
+                # Try geocoding as fallback
+                geocoded = handler.geocode_city(city)
+                if geocoded:
+                    return {
+                        'city': city,
+                        'lat': geocoded[0],
+                        'lon': geocoded[1]
+                    }, 200
+                else:
+                    api.abort(404, f'Coordinates not found for {city}')
+        except Exception as e:
+            logger.error(f"Error fetching coordinates for {city}: {str(e)}")
+            api.abort(500, f"Internal server error: {str(e)}")
+
 @ns_cities.route('/rankings')
 class CityRankings(Resource):
     @ns_cities.doc('get_city_rankings')
