@@ -2,6 +2,9 @@
    UNIFIED AQI SYSTEM APPLICATION
    ============================================================================ */
 
+// API Configuration
+const API_BASE_URL = config?.API_BASE_URL || 'http://localhost:5000/api/v1';
+
 // Global State
 let currentMap = null;
 let selectedCities = [];
@@ -587,12 +590,20 @@ function getHealthImpact(aqi) {
 
 async function loadDefaultCity() {
     const defaultCity = 'Delhi';
-    document.getElementById('citySelect').value = defaultCity;
+    const citySelect = document.getElementById('forecastCity');
+    if (citySelect) {
+        citySelect.value = defaultCity;
+        await loadForecast();
+    }
+}
+
+// Alias for button onclick
+async function loadForecast() {
     await loadPredictions();
 }
 
 async function loadPredictions() {
-    const city = document.getElementById('citySelect').value;
+    const city = document.getElementById('forecastCity')?.value;
     
     if (!city) {
         alert('Please select a city');
@@ -627,29 +638,32 @@ function displayCurrentVsPredicted() {
     const predictedAQI = predictionData.predicted_aqi || 0;
     const change = predictedAQI - currentAQI;
     
-    document.getElementById('comparisonContainer').innerHTML = `
-        <div class="comparison-grid">
-            <div class="comparison-item current">
-                <div class="label">Current AQI</div>
-                <div class="value large ${getAQIColorClass(currentAQI)}">${currentAQI}</div>
-                <div class="status">${getAQICategory(currentAQI)}</div>
-                <div class="timestamp">${new Date(currentData.timestamp).toLocaleString()}</div>
-            </div>
-            
-            <div class="comparison-arrow">→</div>
-            
-            <div class="comparison-item predicted">
-                <div class="label">Predicted AQI (48h)</div>
-                <div class="value large ${getAQIColorClass(predictedAQI)}">${predictedAQI}</div>
-                <div class="status">${getAQICategory(predictedAQI)}</div>
-                <div class="confidence">Confidence: ${predictionData.confidence || 'N/A'}%</div>
-            </div>
-        </div>
-        
-        <div class="change-indicator ${change > 0 ? 'aqi-unhealthy' : 'aqi-good'}">
-            ${change > 0 ? '⬆' : '⬇'} ${Math.abs(change)} AQI points
-        </div>
-    `;
+    // Update current values
+    const currentAqiValue = document.getElementById('currentAqiValue');
+    const currentAqiStatus = document.getElementById('currentAqiStatus');
+    const currentTimestamp = document.getElementById('currentTimestamp');
+    
+    if (currentAqiValue) currentAqiValue.textContent = currentAQI;
+    if (currentAqiValue) currentAqiValue.className = `value large ${getAQIColorClass(currentAQI)}`;
+    if (currentAqiStatus) currentAqiStatus.textContent = getAQICategory(currentAQI);
+    if (currentTimestamp) currentTimestamp.textContent = new Date(currentData.timestamp).toLocaleString();
+    
+    // Update predicted values
+    const predictedAqiValue = document.getElementById('predictedAqiValue');
+    const predictedAqiStatus = document.getElementById('predictedAqiStatus');
+    const confidenceValue = document.getElementById('confidenceValue');
+    
+    if (predictedAqiValue) predictedAqiValue.textContent = predictedAQI;
+    if (predictedAqiValue) predictedAqiValue.className = `value large ${getAQIColorClass(predictedAQI)}`;
+    if (predictedAqiStatus) predictedAqiStatus.textContent = getAQICategory(predictedAQI);
+    if (confidenceValue) confidenceValue.textContent = predictionData.confidence || 'N/A';
+    
+    // Update change indicator
+    const aqiChange = document.getElementById('aqiChange');
+    if (aqiChange) {
+        aqiChange.textContent = `${change > 0 ? '⬆' : '⬇'} ${Math.abs(change)} AQI points`;
+        aqiChange.className = `change-indicator ${change > 0 ? 'aqi-unhealthy' : 'aqi-good'}`;
+    }
 }
 
 function displayPredictionChart() {
@@ -666,7 +680,7 @@ function displayPredictionChart() {
         line: { color: '#667eea', width: 3 }
     };
     
-    Plotly.newPlot('predictionChart', [trace], {
+    Plotly.newPlot('forecastChart', [trace], {
         title: '48-Hour AQI Forecast',
         xaxis: { title: 'Time' },
         yaxis: { title: 'AQI' },
@@ -675,87 +689,51 @@ function displayPredictionChart() {
 }
 
 function displayPollutants() {
-    if (!predictionData) return;
+    if (!currentData) return;
     
-    document.getElementById('pollutantsContainer').innerHTML = `
-        <div class="pollutants-grid">
-            <div class="pollutant-item">
-                <span class="label">PM2.5</span>
-                <span class="value">${predictionData.pm25 || 'N/A'}</span>
-                <span class="unit">μg/m³</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">PM10</span>
-                <span class="value">${predictionData.pm10 || 'N/A'}</span>
-                <span class="unit">μg/m³</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">CO</span>
-                <span class="value">${predictionData.co || 'N/A'}</span>
-                <span class="unit">ppm</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">NO₂</span>
-                <span class="value">${predictionData.no2 || 'N/A'}</span>
-                <span class="unit">ppb</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">O₃</span>
-                <span class="value">${predictionData.o3 || 'N/A'}</span>
-                <span class="unit">ppb</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">SO₂</span>
-                <span class="value">${predictionData.so2 || 'N/A'}</span>
-                <span class="unit">ppb</span>
-            </div>
-        </div>
-    `;
+    // Update individual pollutant values
+    const pm25Value = document.getElementById('pm25Value');
+    const pm10Value = document.getElementById('pm10Value');
+    const no2Value = document.getElementById('no2Value');
+    const so2Value = document.getElementById('so2Value');
+    const coValue = document.getElementById('coValue');
+    const o3Value = document.getElementById('o3Value');
+    
+    if (pm25Value) pm25Value.textContent = currentData.pm25 || 'N/A';
+    if (pm10Value) pm10Value.textContent = currentData.pm10 || 'N/A';
+    if (no2Value) no2Value.textContent = currentData.no2 || 'N/A';
+    if (so2Value) so2Value.textContent = currentData.so2 || 'N/A';
+    if (coValue) coValue.textContent = currentData.co || 'N/A';
+    if (o3Value) o3Value.textContent = currentData.o3 || 'N/A';
 }
 
 function displayHourlyForecast() {
     if (!predictionData || !predictionData.forecast) return;
     
-    const tbody = document.getElementById('hourlyForecastTable');
-    tbody.innerHTML = predictionData.forecast.map(hour => `
-        <tr>
-            <td>${new Date(hour.timestamp).toLocaleString()}</td>
-            <td><strong>${hour.aqi}</strong></td>
-            <td>${hour.pm25 || 'N/A'}</td>
-            <td>${hour.pm10 || 'N/A'}</td>
-            <td><span class="${getAQIColorClass(hour.aqi)}" style="padding: 5px 10px; border-radius: 5px;">
-                ${getAQICategory(hour.aqi)}
-            </span></td>
-        </tr>
-    `).join('');
+    const tbody = document.getElementById('hourlyTableBody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = predictionData.forecast.slice(0, 24).map((hour, index) => {
+        const prevAqi = index > 0 ? predictionData.forecast[index - 1].aqi : currentData?.aqi || 0;
+        const change = hour.aqi - prevAqi;
+        return `
+            <tr>
+                <td>${new Date(hour.timestamp).toLocaleString()}</td>
+                <td><strong>${hour.aqi}</strong></td>
+                <td><span class="${getAQIColorClass(hour.aqi)}" style="padding: 5px 10px; border-radius: 5px;">
+                    ${getAQICategory(hour.aqi)}
+                </span></td>
+                <td style="color: ${change > 0 ? 'red' : 'green'};">
+                    ${change > 0 ? '▲' : '▼'} ${Math.abs(change)}
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function displayModelMetrics() {
-    if (!predictionData || !predictionData.model_metrics) return;
-    
-    const metrics = predictionData.model_metrics;
-    
-    document.getElementById('metricsContainer').innerHTML = `
-        <div class="metrics-grid">
-            <div class="pollutant-item">
-                <span class="label">Model Used</span>
-                <span class="value" style="font-size: 1.2em;">${metrics.model_name || 'Ensemble'}</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">Accuracy</span>
-                <span class="value">${metrics.accuracy || 'N/A'}</span>
-                <span class="unit">%</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">MAE</span>
-                <span class="value">${metrics.mae || 'N/A'}</span>
-            </div>
-            <div class="pollutant-item">
-                <span class="label">RMSE</span>
-                <span class="value">${metrics.rmse || 'N/A'}</span>
-            </div>
-        </div>
-    `;
+    // Model metrics display removed as not in current HTML
+    // Can be added later if needed
 }
 
 // ============================================================================
@@ -831,10 +809,10 @@ async function loadCitiesForForecast() {
         const response = await fetch(`${API_BASE_URL}/cities`);
         const cities = await response.json();
         
-        const select = document.getElementById('citySelect');
+        const select = document.getElementById('forecastCity');
         if (!select) return;
         
-        select.innerHTML = cities.map(city => `
+        select.innerHTML = '<option value="">Select a city...</option>' + cities.map(city => `
             <option value="${city.name}">${city.name}</option>
         `).join('');
     } catch (error) {
