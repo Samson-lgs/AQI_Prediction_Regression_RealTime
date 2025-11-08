@@ -2,12 +2,13 @@
 // Update API_BASE_URL after deploying backend to Render
 
 const config = {
-  // Local Development
-  API_BASE_URL: 'http://localhost:5000/api/v1',
+  // Auto-detect environment: use production backend if deployed on GitHub Pages
+  API_BASE_URL: window.location.hostname.includes('github.io') 
+    ? 'https://your-backend-url.onrender.com/api/v1'  // UPDATE with your actual backend URL
+    : 'http://localhost:5000/api/v1',
   
-  // Production (Update with your Render backend URL)
-  // Note: script.js appends endpoint paths (e.g., '/cities'), so include the '/api/v1' prefix here.
-  // API_BASE_URL: 'https://aqi-backend-api.onrender.com/api/v1',
+  // Manual override: Uncomment to force production URL
+  // API_BASE_URL: 'https://your-backend-url.onrender.com/api/v1',
   
   // Configuration
   DEFAULT_CITY: 'Delhi',
