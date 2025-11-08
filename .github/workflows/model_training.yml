@@ -42,6 +42,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
+      - name: Verify repository files
+        run: |
+          echo "Listing models directory" && ls -la models || true
+          if [ ! -f "models/train_all_models.py" ]; then
+            echo "Expected file models/train_all_models.py not found. Ensure latest commits are pushed." >&2
+            exit 1
+          fi
+
       - name: Verify DB config (skip if missing)
         run: |
           if [ -z "${DATABASE_URL}${DB_HOST}${DB_NAME}${DB_USER}${DB_PASSWORD}" ]; then
@@ -55,6 +63,23 @@ jobs:
         if: env.DATABASE_URL != '' || (env.DB_HOST != '' && env.DB_NAME != '' && env.DB_USER != '' && env.DB_PASSWORD != '')
         run: |
           python models/train_all_models.py --all
+
+      - name: Upload training summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-summary
+          path: |
+            models/trained_models/training_summary.json
+          if-no-files-found: warn
+
+      - name: Upload trained model artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-models
+          path: models/trained_models
+          if-no-files-found: warn
       
       - name: Report status
         if: always()
