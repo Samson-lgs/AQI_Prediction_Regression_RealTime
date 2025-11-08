@@ -30,14 +30,10 @@ except Exception:
     except Exception:
         send_email = None
 
-try:
-    from backend.websocket_handler import broadcast_alert
-except Exception:
-    try:
-        from websocket_handler import broadcast_alert
-    except Exception:
-        def broadcast_alert(*args, **kwargs):
-            return
+# Websocket handler doesn't exist yet - stub it out
+def broadcast_alert(*args, **kwargs):
+    """Placeholder for future websocket alert broadcasting"""
+    pass
 
 # Set up main logger
 logger = setup_logger(
@@ -170,6 +166,8 @@ class DataCollectionPipeline:
                         )
                     city_logger.debug("OpenWeather weather data collected and stored")
                     data_collected = True
+                
+                logger.info(f"  DEBUG: About to fetch pollution for {city}")
 
                 # Determine coordinates: prefer static map, else derive from weather response
                 coords = self.openweather.CITY_COORDINATES.get(city)
@@ -183,6 +181,7 @@ class DataCollectionPipeline:
 
                 # Pollution data if we have coordinates
                 if coords:
+                    logger.info(f"Fetching pollution data for {city} at coords {coords}")
                     pollution_data = self.openweather.fetch_air_pollution_data(
                         coords[0], coords[1]
                     )
@@ -194,10 +193,14 @@ class DataCollectionPipeline:
                             )
                             # Evaluate alerts
                             self._process_alerts(city, pollution_data)
-                        city_logger.debug("OpenWeather pollution data collected and stored")
+                        logger.info(f"  ✅ OpenWeather pollution data collected for {city} - AQI: {pollution_data.get('aqi_value', 'N/A')}")
                         data_collected = True
+                    else:
+                        logger.warning(f"  ⚠️ Pollution data fetch returned None for {city}")
+                else:
+                    logger.warning(f"  ⚠️  No coordinates found for {city}, skipping pollution data")
             except Exception as e:
-                logger.debug(f"  OpenWeather failed for {city}: {str(e)}")
+                logger.error(f"  ❌ OpenWeather pollution fetch failed for {city}: {str(e)}")
             
             return data_collected
         
