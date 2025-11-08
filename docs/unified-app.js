@@ -1,4 +1,4 @@
-/* ============================================================================
+z/* ============================================================================
    UNIFIED AQI SYSTEM APPLICATION
    ============================================================================ */
 
@@ -490,7 +490,8 @@ async function loadHistoricalTrends() {
             throw new Error(`HTTP ${response.status}`);
         }
         
-        const data = await response.json();
+        const result = await response.json();
+        const data = result.data || result; // Handle both {data: [...]} and direct array formats
         
         if (!data || !Array.isArray(data) || data.length === 0) {
             const aqiChart = document.getElementById('aqiTrendChart');
@@ -503,7 +504,7 @@ async function loadHistoricalTrends() {
         // Plot AQI trend
         const aqiTrace = {
             x: data.map(d => d.timestamp),
-            y: data.map(d => d.aqi),
+            y: data.map(d => d.aqi_value || d.aqi),
             type: 'scatter',
             mode: 'lines+markers',
             name: 'AQI',
