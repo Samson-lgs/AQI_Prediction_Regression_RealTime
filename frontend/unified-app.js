@@ -153,28 +153,121 @@ function viewCityDetails(cityName) {
 function initializeDashboard() {
     if (!currentMap) {
         initializeMap();
-        loadUserAlerts();
-        loadHistoricalTrends();
-        loadComparison();
+        loadCityRankings();
+        loadCitiesForTrends();
+        loadCitiesForAlerts();
+        loadCitiesForComparison();
     }
 }
 
-function switchTab(tabName) {
+async function loadCityRankings() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/cities`);
+        const cities = await response.json();
+        
+        // Get AQI for top cities
+        const cityPromises = cities.slice(0, 20).map(async (city) => {
+            try {
+                const aqiResponse = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
+                const aqiData = await aqiResponse.json();
+                return {
+                    city: city.name,
+                    aqi: aqiData.aqi || 0
+                };
+            } catch {
+                return null;
+            }
+        });
+        
+        const cityData = (await Promise.all(cityPromises)).filter(d => d !== null);
+        cityData.sort((a, b) => b.aqi - a.aqi);
+        
+        const trace = {
+            y: cityData.map(d => d.city),
+            x: cityData.map(d => d.aqi),
+            type: 'bar',
+            orientation: 'h',
+            marker: {
+                color: cityData.map(d => getAQIColor(d.aqi))
+            }
+        };
+        
+        Plotly.newPlot('rankingsChart', [trace], {
+            title: 'Top 20 Cities by AQI',
+            xaxis: { title: 'AQI' },
+            yaxis: { title: 'City' },
+            height: 600,
+            margin: { l: 100 }
+        });
+    } catch (error) {
+        console.error('Error loading city rankings:', error);
+    }
+}
+
+async function loadCitiesForTrends() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/cities`);
+        const cities = await response.json();
+        
+        const select = document.getElementById('trendCity');
+        if (!select) return;
+        
+        select.innerHTML = cities.map(city => `
+            <option value="${city.name}">${city.name}</option>
+        `).join('');
+        
+        // Set default and load
+        select.value = 'Delhi';
+        loadHistoricalTrends();
+    } catch (error) {
+        console.error('Error loading cities for trends:', error);
+    }
+}
+
+async function loadCitiesForAlerts() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/cities`);
+        const cities = await response.json();
+        
+        const select = document.getElementById('alertCity');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Select a city...</option>' + cities.map(city => `
+            <option value="${city.name}">${city.name}</option>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading cities for alerts:', error);
+    }
+}
+
+function switchDashboardTab(tabName) {
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    document.querySelector(`[onclick="switchTab('${tabName}')"]`)?.classList.add('active');
+    document.querySelector(`[onclick="switchDashboardTab('${tabName}')"]`)?.classList.add('active');
     
     // Update tab content
     document.querySelectorAll('.dashboard-tab-content').forEach(content => {
         content.classList.remove('active');
     });
-    document.getElementById(`${tabName}-tab`)?.classList.add('active');
+    document.getElementById(`dashboard-${tabName}`)?.classList.add('active');
     
     // Resize map if switching to map tab
     if (tabName === 'map' && currentMap) {
         setTimeout(() => currentMap.invalidateSize(), 100);
+    }
+    
+    // Load data for specific tabs
+    if (tabName === 'trends') {
+        loadHistoricalTrends();
+    } else if (tabName === 'comparison') {
+        loadComparison();
+    } else if (tabName === 'alerts') {
+        loadUserAlerts();
+        loadCitiesForHealth();
+    } else if (tabName === 'map') {
+        loadCityRankings();
     }
 }
 
@@ -252,16 +345,23 @@ async function getCityCoordinates(cityName) {
 
 // Trends Functions
 async function loadHistoricalTrends() {
-    const city = document.getElementById('trendsCity')?.value || 'Delhi';
-    const days = document.getElementById('trendsPeriod')?.value || 7;
+    const citySelect = document.getElementById('trendCity');
+    const daysSelect = document.getElementById('trendDays');
+    
+    const city = citySelect?.value || 'Delhi';
+    const days = daysSelect?.value || 30;
+    
+    if (!city) return;
     
     try {
         const response = await fetch(`${API_BASE_URL}/aqi/history/${city}?days=${days}`);
         const data = await response.json();
         
         if (!data || data.length === 0) {
-            document.getElementById('trendsChart').innerHTML = 
-                '<div class="no-data">No historical data available</div>';
+            const aqiChart = document.getElementById('aqiTrendChart');
+            if (aqiChart) {
+                aqiChart.innerHTML = '<div class="no-data">No historical data available</div>';
+            }
             return;
         }
         
@@ -272,10 +372,11 @@ async function loadHistoricalTrends() {
             type: 'scatter',
             mode: 'lines+markers',
             name: 'AQI',
-            line: { color: '#667eea', width: 3 }
+            line: { color: '#667eea', width: 3 },
+            marker: { size: 6 }
         };
         
-        Plotly.newPlot('trendsChart', [aqiTrace], {
+        Plotly.newPlot('aqiTrendChart', [aqiTrace], {
             title: `AQI Trend - ${city} (Last ${days} Days)`,
             xaxis: { title: 'Date' },
             yaxis: { title: 'AQI' },
@@ -289,7 +390,7 @@ async function loadHistoricalTrends() {
             type: 'scatter',
             mode: 'lines',
             name: 'PM2.5',
-            line: { color: '#ff7e00' }
+            line: { color: '#ff7e00', width: 2 }
         };
         
         const pm10Trace = {
@@ -298,10 +399,10 @@ async function loadHistoricalTrends() {
             type: 'scatter',
             mode: 'lines',
             name: 'PM10',
-            line: { color: '#00e400' }
+            line: { color: '#00e400', width: 2 }
         };
         
-        Plotly.newPlot('pollutantsChart', [pm25Trace, pm10Trace], {
+        Plotly.newPlot('pollutantsTrendChart', [pm25Trace, pm10Trace], {
             title: 'Pollutant Levels',
             xaxis: { title: 'Date' },
             yaxis: { title: 'Concentration (μg/m³)' },
@@ -310,8 +411,10 @@ async function loadHistoricalTrends() {
         
     } catch (error) {
         console.error('Error loading trends:', error);
-        document.getElementById('trendsChart').innerHTML = 
-            '<div class="error">Error loading trend data</div>';
+        const aqiChart = document.getElementById('aqiTrendChart');
+        if (aqiChart) {
+            aqiChart.innerHTML = '<div class="error">Error loading trend data</div>';
+        }
     }
 }
 
@@ -340,10 +443,12 @@ function toggleCitySelection(cityName) {
 }
 
 async function loadComparison() {
-    const container = document.getElementById('comparisonResults');
+    const container = document.getElementById('comparisonGrid');
+    
+    if (!container) return;
     
     if (selectedCities.length === 0) {
-        container.innerHTML = '<div class="no-data">Select cities to compare</div>';
+        container.innerHTML = '<div class="no-data">Select cities above to compare (up to 6 cities)</div>';
         return;
     }
     
@@ -355,24 +460,20 @@ async function loadComparison() {
         const cityData = await Promise.all(dataPromises);
         
         // Display comparison cards
-        container.innerHTML = `
-            <div class="comparison-grid">
-                ${cityData.map(data => `
-                    <div class="city-card">
-                        <h3>${data.city || 'Unknown'}</h3>
-                        <div class="aqi-display ${getAQIColorClass(data.aqi)}">
-                            ${data.aqi || 'N/A'}
-                        </div>
-                        <div style="margin-top: 15px;">
-                            <div>PM2.5: ${data.pm25 || 'N/A'} μg/m³</div>
-                            <div>PM10: ${data.pm10 || 'N/A'} μg/m³</div>
-                            <div>CO: ${data.co || 'N/A'} ppm</div>
-                            <div>NO₂: ${data.no2 || 'N/A'} ppb</div>
-                        </div>
-                    </div>
-                `).join('')}
+        container.innerHTML = cityData.map(data => `
+            <div class="city-card">
+                <h3>${data.city || 'Unknown'}</h3>
+                <div class="aqi-display ${getAQIColorClass(data.aqi)}">
+                    ${data.aqi || 'N/A'}
+                </div>
+                <div style="margin-top: 15px; font-size: 0.9em;">
+                    <div><strong>PM2.5:</strong> ${data.pm25 || 'N/A'} μg/m³</div>
+                    <div><strong>PM10:</strong> ${data.pm10 || 'N/A'} μg/m³</div>
+                    <div><strong>CO:</strong> ${data.co || 'N/A'} ppm</div>
+                    <div><strong>NO₂:</strong> ${data.no2 || 'N/A'} ppb</div>
+                </div>
             </div>
-        `;
+        `).join('');
         
         // Create comparison chart
         const trace = {
@@ -495,7 +596,10 @@ async function deactivateAlert(alertId) {
 }
 
 async function loadHealthRecommendations() {
-    const city = 'Delhi'; // Default city
+    const citySelect = document.getElementById('healthCity');
+    const city = citySelect?.value || 'Delhi';
+    
+    if (!city) return;
     
     try {
         const response = await fetch(`${API_BASE_URL}/aqi/current/${city}`);
@@ -503,18 +607,46 @@ async function loadHealthRecommendations() {
         
         const health = getHealthImpact(data.aqi);
         
-        document.getElementById('healthInfo').innerHTML = `
-            <div class="health-recommendation">
-                <h3>${health.impact}</h3>
-                <p><strong>Recommendations:</strong></p>
-                <ul>
-                    ${health.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+        const healthContainer = document.getElementById('healthInfo');
+        if (!healthContainer) return;
+        
+        healthContainer.innerHTML = `
+            <div class="health-recommendation" style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); padding: 25px; border-radius: 12px;">
+                <h3 style="color: #d63031; margin-bottom: 15px;">${health.impact}</h3>
+                <p style="margin-bottom: 10px;"><strong>Current AQI in ${city}:</strong> ${data.aqi}</p>
+                <p style="margin-bottom: 10px;"><strong>Recommendations:</strong></p>
+                <ul style="margin: 10px 0 10px 20px;">
+                    ${health.recommendations.map(rec => `<li style="margin-bottom: 8px;">${rec}</li>`).join('')}
                 </ul>
-                <p><strong>At-Risk Groups:</strong> ${health.atRisk}</p>
+                <p style="margin-top: 15px;"><strong>At-Risk Groups:</strong> ${health.atRisk}</p>
             </div>
         `;
     } catch (error) {
         console.error('Error loading health recommendations:', error);
+        const healthContainer = document.getElementById('healthInfo');
+        if (healthContainer) {
+            healthContainer.innerHTML = '<div class="error">Error loading health recommendations</div>';
+        }
+    }
+}
+
+async function loadCitiesForHealth() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/cities`);
+        const cities = await response.json();
+        
+        const select = document.getElementById('healthCity');
+        if (!select) return;
+        
+        select.innerHTML = cities.map(city => `
+            <option value="${city.name}">${city.name}</option>
+        `).join('');
+        
+        // Set default and load
+        select.value = 'Delhi';
+        loadHealthRecommendations();
+    } catch (error) {
+        console.error('Error loading cities for health:', error);
     }
 }
 
@@ -787,18 +919,14 @@ async function loadCitiesForComparison() {
         const response = await fetch(`${API_BASE_URL}/cities`);
         const cities = await response.json();
         
-        const container = document.getElementById('citySelectorContainer');
+        const container = document.getElementById('citySelectors');
         if (!container) return;
         
-        container.innerHTML = `
-            <div class="selector-group">
-                ${cities.slice(0, 20).map(city => `
-                    <button class="city-selector" onclick="toggleCitySelection('${city.name}')">
-                        ${city.name}
-                    </button>
-                `).join('')}
-            </div>
-        `;
+        container.innerHTML = cities.slice(0, 20).map(city => `
+            <button class="city-selector" onclick="toggleCitySelection('${city.name}')">
+                ${city.name}
+            </button>
+        `).join('');
     } catch (error) {
         console.error('Error loading cities for comparison:', error);
     }
