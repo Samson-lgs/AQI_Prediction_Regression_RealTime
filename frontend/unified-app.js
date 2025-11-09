@@ -877,12 +877,14 @@ async function loadForecast() {
 
 async function loadPredictions() {
     const city = document.getElementById('forecastCity')?.value;
-    
+    const hoursSelect = document.getElementById('forecastHours');
+    const hours = hoursSelect ? parseInt(hoursSelect.value, 10) : 24;
+
     if (!city) {
         alert('Please select a city');
         return;
     }
-    
+
     try {
         // Show loading indicators
         const currentAqiValue = document.getElementById('currentAqiValue');
@@ -901,9 +903,17 @@ async function loadPredictions() {
         
         // Load prediction
         // Corrected to /forecast/ namespace (previously /aqi/forecast/ caused 404)
-        const predictionResponse = await fetch(`${API_BASE_URL}/forecast/${city}?hours=48`);
-        
+        const predictionResponse = await fetch(`${API_BASE_URL}/forecast/${city}?hours=${hours}`);
+
         if (!predictionResponse.ok) {
+            if (predictionResponse.status === 404) {
+                // Graceful no-data handling
+                predictionData = { forecast: [], predicted_aqi: 0, confidence: 'N/A', forecast_hours: hours };
+                displayCurrentVsPredicted();
+                displayPredictionChartNoData(city);
+                displayHourlyForecastNoData();
+                return; 
+            }
             throw new Error(`Failed to load forecast: ${predictionResponse.status} ${predictionResponse.statusText}`);
         }
         
@@ -923,7 +933,7 @@ async function loadPredictions() {
 
             // Choose a representative predicted AQI value for the comparison card:
             // Use the prediction at the selected forecast horizon (default last hour requested) or first if unavailable.
-            const horizonIndex = Math.min((predictionData.forecast_hours || predictionData.forecast.length) - 1, predictionData.forecast.length - 1);
+            const horizonIndex = Math.min((hours || predictionData.forecast_hours || predictionData.forecast.length) - 1, predictionData.forecast.length - 1);
             if (horizonIndex >= 0) {
                 predictionData.predicted_aqi = predictionData.forecast[horizonIndex].aqi;
                 predictionData.confidence = predictionData.forecast[horizonIndex].confidence;
@@ -940,9 +950,9 @@ async function loadPredictions() {
         
     // Display all prediction components
     displayCurrentVsPredicted();
-    displayPredictionChart();
+    displayPredictionChart(hours);
     displayPollutants();
-    displayHourlyForecast();
+    displayHourlyForecast(hours);
     displayModelMetrics(city);
         
     } catch (error) {
@@ -997,6 +1007,27 @@ function displayCurrentVsPredicted() {
     if (aqiChange) {
         aqiChange.textContent = `${change > 0 ? '⬆' : '⬇'} ${Math.abs(change)} AQI points`;
         aqiChange.className = `change-indicator ${change > 0 ? 'aqi-unhealthy' : 'aqi-good'}`;
+    }
+}
+
+function displayPredictionChartNoData(city) {
+    const chart = document.getElementById('forecastChart');
+    if (chart) {
+        chart.innerHTML = `<div class="no-data">No recent data available for ${city}. Forecast cannot be generated.</div>`;
+    }
+    const predictionHoursEl = document.getElementById('predictionHours');
+    if (predictionHoursEl) predictionHoursEl.textContent = '--';
+    const aqiChange = document.getElementById('aqiChange');
+    if (aqiChange) {
+        aqiChange.textContent = 'No change (insufficient data)';
+        aqiChange.className = 'change-indicator';
+    }
+}
+
+function displayHourlyForecastNoData() {
+    const tbody = document.getElementById('hourlyTableBody');
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No data to forecast</td></tr>';
     }
 }
 
