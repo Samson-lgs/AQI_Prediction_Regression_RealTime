@@ -424,18 +424,35 @@ async function initializeDashboard() {
         const cities = await getCities();
         if (!cities.length) return;
         
-        // Load rankings chart
+        // Load rankings chart using batch endpoint for speed
         const rankingsCities = cities.slice(0, 10); // limit initial load for speed
-        const rankingPromises = rankingsCities.map(async city => {
-            try {
-                const data = await fetchCurrentAQI(city.name);
-                return { city: city.name, aqi: data?.aqi || 0 };
-            } catch (_) { return null; }
-        });
+        const cityNames = rankingsCities.map(c => c.name).join(',');
         
-        const rankingData = (await Promise.all(rankingPromises))
-            .filter(Boolean)
-            .sort((a, b) => b.aqi - a.aqi);
+        let rankingData = [];
+        try {
+            const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
+            if (batchResp.ok) {
+                const batchData = await batchResp.json();
+                rankingData = (batchData.data || []).map(d => ({ city: d.city, aqi: d.aqi || 0 }));
+                // Cache the results
+                batchData.data?.forEach(d => {
+                    const key = (d.city || '').toLowerCase();
+                    currentAQICache.set(key, { data: d, ts: Date.now() });
+                });
+            }
+        } catch (batchErr) {
+            console.warn('Batch endpoint failed, falling back to individual requests:', batchErr);
+            // Fallback to individual requests
+            const rankingPromises = rankingsCities.map(async city => {
+                try {
+                    const data = await fetchCurrentAQI(city.name);
+                    return { city: city.name, aqi: data?.aqi || 0 };
+                } catch (_) { return null; }
+            });
+            rankingData = (await Promise.all(rankingPromises)).filter(Boolean);
+        }
+        
+        rankingData.sort((a, b) => b.aqi - a.aqi);
         
         if (rankingData.length && typeof Plotly !== 'undefined') {
             const rankingsChart = document.getElementById('rankingsChart');

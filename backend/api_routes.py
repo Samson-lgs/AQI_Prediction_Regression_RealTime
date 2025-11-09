@@ -443,6 +443,61 @@ class AllCitiesCurrentAQI(Resource):
             logger.error(f"Error fetching all cities data: {str(e)}")
             api.abort(500, f"Internal server error: {str(e)}")
 
+@ns_aqi.route('/batch')
+class BatchCurrentAQI(Resource):
+    @cache_response(timeout=300)
+    @ns_aqi.doc('get_batch_current_aqi')
+    @ns_aqi.param('cities', 'Comma-separated list of city names', required=True)
+    def get(self):
+        """Get current AQI for multiple cities in a single request (performance optimization)"""
+        try:
+            from database.db_operations import DatabaseOperations
+            db = DatabaseOperations()
+            
+            cities_param = request.args.get('cities', '')
+            if not cities_param:
+                return {'error': 'cities parameter required'}, 400
+            
+            city_list = [c.strip() for c in cities_param.split(',') if c.strip()]
+            if not city_list:
+                return {'error': 'No valid cities provided'}, 400
+            
+            # Limit to 100 cities per request to prevent abuse
+            if len(city_list) > 100:
+                return {'error': 'Maximum 100 cities per batch request'}, 400
+            
+            results = []
+            for city in city_list:
+                try:
+                    data = db.get_latest_pollution_data(city)
+                    if data:
+                        results.append({
+                            'city': city,
+                            'aqi': data.get('aqi_value', 0),
+                            'pm25': float(data.get('pm25', 0)) if data.get('pm25') else 0,
+                            'pm10': float(data.get('pm10', 0)) if data.get('pm10') else 0,
+                            'no2': float(data.get('no2', 0)) if data.get('no2') else 0,
+                            'so2': float(data.get('so2', 0)) if data.get('so2') else 0,
+                            'co': float(data.get('co', 0)) if data.get('co') else 0,
+                            'o3': float(data.get('o3', 0)) if data.get('o3') else 0,
+                            'timestamp': str(data.get('timestamp', ''))
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to fetch data for {city}: {str(e)}")
+                    # Skip cities with errors, don't fail entire batch
+                    continue
+            
+            return {
+                'requested': len(city_list),
+                'returned': len(results),
+                'data': results,
+                'timestamp': datetime.now().isoformat()
+            }, 200
+            
+        except Exception as e:
+            logger.error(f"Error in batch AQI fetch: {str(e)}")
+            return {'error': str(e)}, 500
+
 # ============================================================================
 # Forecast/Prediction Endpoints
 # ============================================================================
