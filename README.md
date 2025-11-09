@@ -15,7 +15,7 @@ Unified (city-agnostic) AQI prediction system ingesting real-time pollution & we
 
 ### Machine Learning
 - ✅ Unified training script: `scripts/train_models_render_last7d_tuned.py`
-- ✅ Models: Linear Regression (baseline), Random Forest, XGBoost (primary), optional LightGBM / CatBoost experiments
+- ✅ Models: Linear Regression (baseline), Random Forest, XGBoost (primary)
 - ✅ Chronological train/val/test split (60/20/20) to prevent temporal leakage
 - ✅ Median imputation saved to `models/saved_models/median_imputation.json` and reused at inference
 - ✅ Achieved Test R² ≈ 0.94 (XGBoost tuned) on 7‑day Render dataset (Nov 8, 2025)

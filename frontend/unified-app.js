@@ -14,6 +14,34 @@ let citiesCache = null; // Cache cities to avoid repeated API calls
 let citiesPromise = null; // Promise to handle concurrent requests
 let fetchAttempts = 0; // Track fetch attempts
 let selectedCities = []; // Cities chosen for comparison
+let liveInitialized = false; // Prevent heavy re-inits on Live section
+
+// AQI fetch cache to reduce repeated network calls
+const AQI_CACHE_TTL_MS = 120000; // 2 minutes
+const currentAQICache = new Map(); // key: city name, value: { data, ts }
+
+// Static fallback coordinates for major Indian cities (used if /cities endpoint lacks lat/lon)
+// Extend this list as needed; coordinates approximate city centers.
+const CITY_COORDS = {
+    "Delhi": { lat: 28.6139, lon: 77.2090 },
+    "Mumbai": { lat: 19.0760, lon: 72.8777 },
+    "Bengaluru": { lat: 12.9716, lon: 77.5946 },
+    "Chennai": { lat: 13.0827, lon: 80.2707 },
+    "Kolkata": { lat: 22.5726, lon: 88.3639 },
+    "Hyderabad": { lat: 17.3850, lon: 78.4867 },
+    "Pune": { lat: 18.5204, lon: 73.8567 },
+    "Ahmedabad": { lat: 23.0225, lon: 72.5714 },
+    "Jaipur": { lat: 26.9124, lon: 75.7873 },
+    "Lucknow": { lat: 26.8467, lon: 80.9462 },
+    "Surat": { lat: 21.1702, lon: 72.8311 },
+    "Kanpur": { lat: 26.4499, lon: 80.3319 },
+    "Nagpur": { lat: 21.1458, lon: 79.0882 },
+    "Patna": { lat: 25.5941, lon: 85.1376 },
+    "Indore": { lat: 22.7196, lon: 75.8577 },
+    "Thane": { lat: 19.2183, lon: 72.9781 },
+    "Bhopal": { lat: 23.2599, lon: 77.4126 },
+    "Visakhapatnam": { lat: 17.6868, lon: 83.2185 }
+};
 
 // Add AQI standard badge on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -150,7 +178,11 @@ function showSection(sectionName) {
         loadHomeStats();
         loadTopCities();
     } else if (sectionName === 'live') {
+        // Initialize all dashboard components
         initializeDashboard();
+        loadCitiesForTrends();
+        loadCitiesForComparison();
+        loadCitiesForAlerts();
     } else if (sectionName === 'forecast') {
         loadDefaultCity();
     }
@@ -189,9 +221,9 @@ async function loadHomeStats() {
             if (avgAqiEl) avgAqiEl.textContent = avgAqi;
         }
         
-        // Update data sources (hardcoded as per system design)
+        // Update data sources (OpenWeather API, IQAir - 2 sources)
         const dataSourcesEl = document.getElementById('dataSources');
-        if (dataSourcesEl) dataSourcesEl.textContent = '3';
+        if (dataSourcesEl) dataSourcesEl.textContent = '2';
         
         // Update active alerts (mock for now)
         const activeAlertsEl = document.getElementById('activeAlerts');
@@ -205,259 +237,39 @@ async function loadHomeStats() {
 async function loadTopCities() {
     try {
         const cities = await getCities();
-        
-        if (cities.length === 0) return;
-        
-        // Get AQI for top 8 cities only (to avoid too many requests)
+        if (!cities.length) return;
+
+        // Take a sample of top cities (first 8 for now)
         const topCities = cities.slice(0, 8);
         const cityDataPromises = topCities.map(async city => {
             try {
-                const aqiResponse = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
-                if (!aqiResponse.ok) return null;
-                
-                const aqiData = await aqiResponse.json();
+                const resp = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
+                if (!resp.ok) return null;
+                const aqiData = await resp.json();
                 return {
                     name: city.name,
                     aqi: aqiData.aqi || 0,
                     category: getAQICategory(aqiData.aqi || 0)
                 };
-            } catch (error) {
-                return null;
-            }
+            } catch (_) { return null; }
         });
-        
-        const cityData = (await Promise.all(cityDataPromises)).filter(d => d !== null);
-        
-        if (cityData.length === 0) {
-            const grid = document.getElementById('topCitiesGrid');
-            if (grid) grid.innerHTML = '<div class="no-data">Loading city data...</div>';
-            return;
-        }
-        
-        // Sort by AQI descending
-        cityData.sort((a, b) => b.aqi - a.aqi);
-        
-        // Display in grid
+        const cityData = (await Promise.all(cityDataPromises)).filter(Boolean);
+
         const grid = document.getElementById('topCitiesGrid');
         if (!grid) return;
-        
-        grid.innerHTML = cityData.map(city => `
-            <div class="city-card" onclick="viewCityDetails('${city.name}')">
-                <div class="city-name">${city.name}</div>
-                <div class="aqi-display ${getAQIColorClass(city.aqi)}">${city.aqi}</div>
-                <div style="text-align: center; font-size: 0.9em; color: #666;">
-                    ${city.category}
-                </div>
+        if (!cityData.length) {
+            grid.innerHTML = '<div class="no-data">No AQI data available</div>';
+            return;
+        }
+        grid.innerHTML = cityData.map(d => `
+            <div class="city-card">
+                <div class="city-name">${d.name}</div>
+                <div class="aqi-display ${getAQIColorClass(d.aqi)}">${d.aqi}</div>
+                <div style="text-align:center;font-size:0.85em;color:#333;">${d.category}</div>
             </div>
         `).join('');
-        
-    } catch (error) {
-        console.error('Error loading top cities:', error);
-        const grid = document.getElementById('topCitiesGrid');
-        if (grid) {
-            grid.innerHTML = '<div class="error">Unable to load city data</div>';
-        }
-    }
-}
-
-function viewCityDetails(cityName) {
-    // Switch to live dashboard and load city data
-    showSection('live');
-    switchTab('map');
-    
-    // Center map on city if available
-    if (currentMap) {
-        getCityCoordinates(cityName).then(coords => {
-            if (coords) {
-                currentMap.setView([coords.lat, coords.lon], 10);
-            }
-        });
-    }
-}
-
-// ============================================================================
-// LIVE DASHBOARD SECTION
-// ============================================================================
-
-function initializeDashboard() {
-    if (!currentMap) {
-        initializeMap();
-        loadCityRankings();
-        loadCitiesForTrends();
-        loadCitiesForAlerts();
-        loadCitiesForComparison();
-    }
-}
-
-async function loadCityRankings() {
-    try {
-        const cities = await getCities();
-        
-        if (cities.length === 0) return;
-        
-        // Get AQI for top cities
-        const cityPromises = cities.slice(0, 20).map(async (city) => {
-            try {
-                const aqiResponse = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
-                if (!aqiResponse.ok) return null;
-                
-                const aqiData = await aqiResponse.json();
-                return {
-                    city: city.name,
-                    aqi: aqiData.aqi || 0
-                };
-            } catch {
-                return null;
-            }
-        });
-        
-        const cityData = (await Promise.all(cityPromises)).filter(d => d !== null);
-        cityData.sort((a, b) => b.aqi - a.aqi);
-        
-        const trace = {
-            y: cityData.map(d => d.city),
-            x: cityData.map(d => d.aqi),
-            type: 'bar',
-            orientation: 'h',
-            marker: {
-                color: cityData.map(d => getAQIColor(d.aqi))
-            }
-        };
-        
-        Plotly.newPlot('rankingsChart', [trace], {
-            title: 'Top 20 Cities by AQI',
-            xaxis: { title: 'AQI' },
-            yaxis: { title: 'City' },
-            height: 600,
-            margin: { l: 100 }
-        });
-    } catch (error) {
-        console.error('Error loading city rankings:', error);
-    }
-}
-
-async function loadCitiesForTrends() {
-    try {
-        const cities = await getCities();
-        
-        const select = document.getElementById('trendCity');
-        if (!select) return;
-        
-        select.innerHTML = cities.map(city => `
-            <option value="${city.name}">${city.name}</option>
-        `).join('');
-        
-        // Set default and load
-        select.value = 'Delhi';
-        loadHistoricalTrends();
-    } catch (error) {
-        console.error('Error loading cities for trends:', error);
-    }
-}
-
-async function loadCitiesForAlerts() {
-    try {
-        const cities = await getCities();
-        
-        const select = document.getElementById('alertCity');
-        if (!select) return;
-        
-        select.innerHTML = '<option value="">Select a city...</option>' + cities.map(city => `
-            <option value="${city.name}">${city.name}</option>
-        `).join('');
-    } catch (error) {
-        console.error('Error loading cities for alerts:', error);
-    }
-}
-
-function switchDashboardTab(tabName) {
-    // Update tab buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    document.querySelector(`[onclick="switchDashboardTab('${tabName}')"]`)?.classList.add('active');
-    
-    // Update tab content
-    document.querySelectorAll('.dashboard-tab-content').forEach(content => {
-        content.classList.remove('active');
-    });
-    document.getElementById(`dashboard-${tabName}`)?.classList.add('active');
-    
-    // Resize map if switching to map tab
-    if (tabName === 'map' && currentMap) {
-        setTimeout(() => currentMap.invalidateSize(), 100);
-    }
-    
-    // Load data for specific tabs
-    if (tabName === 'trends') {
-        loadHistoricalTrends();
-    } else if (tabName === 'comparison') {
-        loadComparison();
-    } else if (tabName === 'alerts') {
-        loadUserAlerts();
-        loadCitiesForHealth();
-    } else if (tabName === 'map') {
-        loadCityRankings();
-    }
-}
-
-// Map Functions
-function initializeMap() {
-    const mapContainer = document.getElementById('map');
-    if (!mapContainer || currentMap) return;
-    
-    currentMap = L.map('map').setView([20.5937, 78.9629], 5);
-    
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(currentMap);
-    
-    addCityMarkers();
-}
-
-async function addCityMarkers() {
-    if (!currentMap) return;
-    
-    try {
-        const citiesResponse = await fetch(`${API_BASE_URL}/cities`);
-        const cities = await citiesResponse.json();
-        
-        for (const city of cities) {
-            const aqiResponse = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
-            const aqiData = await aqiResponse.json();
-            
-            const coords = await getCityCoordinates(city.name);
-            if (!coords) continue;
-            
-            const aqi = aqiData.aqi || 0;
-            const color = getAQIColor(aqi);
-            
-            const marker = L.circleMarker([coords.lat, coords.lon], {
-                radius: 10,
-                fillColor: color,
-                color: '#fff',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.8
-            }).addTo(currentMap);
-            
-            marker.bindPopup(`
-                <div style="text-align: center;">
-                    <h3 style="margin: 0 0 10px 0;">${city.name}</h3>
-                    <div style="font-size: 2em; font-weight: bold; color: ${color};">
-                        ${aqi}
-                    </div>
-                    <div style="margin: 5px 0;">${getAQICategory(aqi)}</div>
-                    <div style="font-size: 0.9em; color: #666;">
-                        PM2.5: ${aqiData.pm25 || 'N/A'} μg/m³<br>
-                        PM10: ${aqiData.pm10 || 'N/A'} μg/m³
-                    </div>
-                </div>
-            `);
-        }
-    } catch (error) {
-        console.error('Error adding city markers:', error);
+    } catch (err) {
+        console.error('Error loading top cities:', err);
     }
 }
 
@@ -473,90 +285,241 @@ async function getCityCoordinates(cityName) {
     return null;
 }
 
-// Trends Functions
+// Trends Functions (simplified placeholder to avoid runtime errors after cleanup)
 async function loadHistoricalTrends() {
-    const citySelect = document.getElementById('trendCity');
-    const daysSelect = document.getElementById('trendDays');
-    
-    const city = citySelect?.value || 'Delhi';
-    const days = daysSelect?.value || 30;
-    
-    if (!city) return;
-    
     try {
-        const response = await fetch(`${API_BASE_URL}/aqi/history/${city}?days=${days}`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data || !Array.isArray(data) || data.length === 0) {
-            const aqiChart = document.getElementById('aqiTrendChart');
-            if (aqiChart) {
-                aqiChart.innerHTML = '<div class="no-data">No historical data available for this city</div>';
+        const citySelect = document.getElementById('trendCity');
+        const daysSelect = document.getElementById('trendDays');
+        const city = citySelect?.value || 'Delhi';
+        const days = daysSelect?.value || 30;
+        if (!city) return;
+
+        const resp = await fetch(`${API_BASE_URL}/aqi/history/${city}?days=${days}`);
+        if (!resp.ok) throw new Error('Failed to load history');
+        const data = await resp.json();
+        const aqiDiv = document.getElementById('aqiTrendChart');
+        if (aqiDiv) {
+            if (!Array.isArray(data) || !data.length) {
+                aqiDiv.innerHTML = '<div class="no-data">No historical data</div>';
+            } else if (typeof Plotly !== 'undefined') {
+                Plotly.newPlot('aqiTrendChart', [{
+                    x: data.map(d => d.timestamp || d.date || d.time),
+                    y: data.map(d => d.aqi),
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    name: 'AQI'
+                }], { title: `AQI Trend - ${city}`, height: 350 });
             }
-            return;
         }
-        
-        // Plot AQI trend
-        const aqiTrace = {
-            x: data.map(d => d.timestamp),
-            y: data.map(d => d.aqi),
-            type: 'scatter',
-            mode: 'lines+markers',
-            name: 'AQI',
-            line: { color: '#667eea', width: 3 },
-            marker: { size: 6 }
-        };
-        
-        Plotly.newPlot('aqiTrendChart', [aqiTrace], {
-            title: `AQI Trend - ${city} (Last ${days} Days)`,
-            xaxis: { title: 'Date' },
-            yaxis: { title: 'AQI' },
-            height: 400
-        });
-        
-        // Plot pollutants
-        const pm25Trace = {
-            x: data.map(d => d.timestamp),
-            y: data.map(d => d.pm25),
-            type: 'scatter',
-            mode: 'lines',
-            name: 'PM2.5',
-            line: { color: '#ff7e00', width: 2 }
-        };
-        
-        const pm10Trace = {
-            x: data.map(d => d.timestamp),
-            y: data.map(d => d.pm10),
-            type: 'scatter',
-            mode: 'lines',
-            name: 'PM10',
-            line: { color: '#00e400', width: 2 }
-        };
-        
-        Plotly.newPlot('pollutantsTrendChart', [pm25Trace, pm10Trace], {
-            title: 'Pollutant Levels',
-            xaxis: { title: 'Date' },
-            yaxis: { title: 'Concentration (μg/m³)' },
-            height: 400
-        });
-        
-    } catch (error) {
-        console.error('Error loading trends:', error);
-        const aqiChart = document.getElementById('aqiTrendChart');
-        if (aqiChart) {
-            aqiChart.innerHTML = '<div class="error">Error loading trend data</div>';
-        }
+    } catch (err) {
+        console.error('Error loading historical trends:', err);
+        const aqiDiv = document.getElementById('aqiTrendChart');
+        if (aqiDiv) aqiDiv.innerHTML = '<div class="error">Error loading trends</div>';
     }
 }
 
-// Comparison Functions
+// Dashboard tab switching
+function switchDashboardTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.dashboard-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab
+    const selectedTab = document.getElementById(`dashboard-${tabName}`);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    }
+    
+    // Activate button
+    const buttons = document.querySelectorAll('.tab-btn');
+    buttons.forEach(btn => {
+        if (btn.textContent.toLowerCase().includes(tabName)) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Initialize tab-specific features
+    if (tabName === 'map') {
+        initializeDashboard();
+    } else if (tabName === 'trends') {
+        loadCitiesForTrends();
+    } else if (tabName === 'comparison') {
+        loadCitiesForComparison();
+    } else if (tabName === 'alerts') {
+        loadCitiesForAlerts();
+        loadUserAlerts();
+    }
+}
+
+// Initialize dashboard with live map and rankings
+async function initializeDashboard() {
+    try {
+        // Avoid heavy re-initialization if already set up
+        if (liveInitialized) {
+            // Still ensure rankings chart exists once per session
+            if (!document.getElementById('rankingsChart')) return;
+        }
+        const cities = await getCities();
+        if (!cities.length) return;
+        
+        // Load rankings chart
+        const rankingsCities = cities.slice(0, 10); // limit initial load for speed
+        const rankingPromises = rankingsCities.map(async city => {
+            try {
+                const data = await fetchCurrentAQI(city.name);
+                return { city: city.name, aqi: data?.aqi || 0 };
+            } catch (_) { return null; }
+        });
+        
+        const rankingData = (await Promise.all(rankingPromises))
+            .filter(Boolean)
+            .sort((a, b) => b.aqi - a.aqi);
+        
+        if (rankingData.length && typeof Plotly !== 'undefined') {
+            const rankingsChart = document.getElementById('rankingsChart');
+            if (rankingsChart) {
+                Plotly.newPlot('rankingsChart', [{
+                    x: rankingData.map(d => d.city),
+                    y: rankingData.map(d => d.aqi),
+                    type: 'bar',
+                    marker: {
+                        color: rankingData.map(d => getAQIColor(d.aqi))
+                    }
+                }], {
+                    title: 'Cities by AQI Level',
+                    xaxis: { title: 'City' },
+                    yaxis: { title: 'AQI' },
+                    height: 400
+                });
+            }
+        }
+        
+        // Initialize Leaflet map with AQI markers if library loaded
+        if (typeof L !== 'undefined') {
+            try {
+                if (!currentMap) {
+                    currentMap = L.map('map').setView([22.9734, 78.6569], 5); // Center India
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 10,
+                        attribution: '&copy; OpenStreetMap contributors'
+                    }).addTo(currentMap);
+                }
+
+                // Clear existing markers layer if needed
+                if (currentMap._aqiLayer) {
+                    currentMap.removeLayer(currentMap._aqiLayer);
+                }
+                const layerGroup = L.layerGroup();
+
+                // Limit initial markers and apply small concurrency to avoid network spikes
+                const mapCities = cities.slice(0, 30);
+
+                const worker = async (city) => {
+                    const name = city.name || city.city || city;
+                    let lat = city.lat || city.latitude || (CITY_COORDS[name]?.lat);
+                    let lon = city.lon || city.lng || city.longitude || (CITY_COORDS[name]?.lon);
+                    if (lat == null || lon == null) return;
+                    try {
+                        const data = await fetchCurrentAQI(name);
+                        const aqi = data?.aqi || 0;
+                        const color = getAQIColor(aqi);
+                        const category = getAQICategory(aqi);
+                        const marker = L.circleMarker([lat, lon], {
+                            radius: 10,
+                            color: '#222',
+                            weight: 1,
+                            fillColor: color,
+                            fillOpacity: 0.85
+                        }).bindPopup(`
+                            <div style="min-width:160px;font-family:inherit;">
+                                <strong>${name}</strong><br>
+                                AQI: <span style="font-weight:600;color:${color}">${aqi}</span><br>
+                                <small>${category}</small>
+                            </div>
+                        `);
+                        layerGroup.addLayer(marker);
+                    } catch (_) { /* ignore */ }
+                };
+
+                const CONCURRENCY = 6;
+                let i = 0;
+                const runners = new Array(CONCURRENCY).fill(0).map(async () => {
+                    while (i < mapCities.length) {
+                        const idx = i++;
+                        await worker(mapCities[idx]);
+                    }
+                });
+                await Promise.all(runners);
+
+                layerGroup.addTo(currentMap);
+                currentMap._aqiLayer = layerGroup;
+
+                // Add legend
+                if (!currentMap._aqiLegend) {
+                    const legend = L.control({ position: 'bottomright' });
+                    legend.onAdd = function () {
+                        const div = L.DomUtil.create('div', 'aqi-legend');
+                        const ranges = [
+                            { max: 50, label: 'Good' },
+                            { max: 100, label: 'Moderate' },
+                            { max: 150, label: 'Unhealthy (SG)' },
+                            { max: 200, label: 'Unhealthy' },
+                            { max: 300, label: 'Very Unhealthy' },
+                            { max: 500, label: 'Hazardous' }
+                        ];
+                        div.style.background = 'white';
+                        div.style.padding = '10px';
+                        div.style.borderRadius = '8px';
+                        div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+                        div.style.fontSize = '12px';
+                        div.innerHTML = '<strong>AQI Legend</strong><br>' + ranges.map(r => {
+                            return `<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+                                <span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${getAQIColor(r.max)}"></span>${r.label}
+                            </div>`;
+                        }).join('');
+                        return div;
+                    };
+                    legend.addTo(currentMap);
+                    currentMap._aqiLegend = legend;
+                }
+            } catch (mapErr) {
+                console.error('Map setup error:', mapErr);
+            }
+        } else {
+            console.warn('Leaflet not loaded; map skipped');
+        }
+
+        liveInitialized = true;
+        
+    } catch (err) {
+        console.error('Error initializing dashboard:', err);
+    }
+}
+
+// Cached fetch for current AQI per city with TTL to reduce duplicate requests
+async function fetchCurrentAQI(cityName) {
+    const key = (cityName || '').toLowerCase();
+    const now = Date.now();
+    const cached = currentAQICache.get(key);
+    if (cached && (now - cached.ts) < AQI_CACHE_TTL_MS) {
+        return cached.data;
+    }
+    const resp = await fetch(`${API_BASE_URL}/aqi/current/${encodeURIComponent(cityName)}`);
+    if (!resp.ok) throw new Error(`AQI fetch failed ${resp.status}`);
+    const data = await resp.json();
+    currentAQICache.set(key, { data, ts: now });
+    return data;
+}
+
+// City comparison
 function toggleCitySelection(cityName) {
     const index = selectedCities.indexOf(cityName);
-    
     if (index > -1) {
         selectedCities.splice(index, 1);
     } else {
@@ -567,108 +530,128 @@ function toggleCitySelection(cityName) {
         selectedCities.push(cityName);
     }
     
-    // Update button states
-    document.querySelectorAll('.city-selector').forEach(btn => {
-        if (btn.textContent === cityName) {
-            btn.classList.toggle('selected');
+    // Update UI
+    const buttons = document.querySelectorAll('.city-selector');
+    buttons.forEach(btn => {
+        const city = btn.textContent.trim();
+        if (selectedCities.includes(city)) {
+            btn.classList.add('selected');
+        } else {
+            btn.classList.remove('selected');
         }
     });
     
-    loadComparison();
+    // Load comparison
+    if (selectedCities.length > 0) {
+        loadCityComparison();
+    }
 }
 
-async function loadComparison() {
-    const container = document.getElementById('comparisonGrid');
+async function loadCityComparison() {
+    if (selectedCities.length === 0) return;
     
-    if (!container) return;
+    const grid = document.getElementById('comparisonGrid');
+    const chart = document.getElementById('comparisonChart');
     
-    if (selectedCities.length === 0) {
-        container.innerHTML = '<div class="no-data">Select cities above to compare (up to 6 cities)</div>';
-        return;
-    }
+    if (grid) grid.innerHTML = '<div class="loading">Loading comparison...</div>';
     
     try {
-        const dataPromises = selectedCities.map(city => 
-            fetch(`${API_BASE_URL}/aqi/current/${city}`).then(r => r.json())
-        );
-        
-        const cityData = await Promise.all(dataPromises);
-        
-        // Display comparison cards
-        container.innerHTML = cityData.map(data => `
-            <div class="city-card">
-                <h3>${data.city || 'Unknown'}</h3>
-                <div class="aqi-display ${getAQIColorClass(data.aqi)}">
-                    ${data.aqi || 'N/A'}
-                </div>
-                <div style="margin-top: 15px; font-size: 0.9em;">
-                    <div><strong>PM2.5:</strong> ${data.pm25 || 'N/A'} μg/m³</div>
-                    <div><strong>PM10:</strong> ${data.pm10 || 'N/A'} μg/m³</div>
-                    <div><strong>CO:</strong> ${data.co || 'N/A'} ppm</div>
-                    <div><strong>NO₂:</strong> ${data.no2 || 'N/A'} ppb</div>
-                </div>
-            </div>
-        `).join('');
-        
-        // Create comparison chart
-        const trace = {
-            x: cityData.map(d => d.city),
-            y: cityData.map(d => d.aqi),
-            type: 'bar',
-            marker: {
-                color: cityData.map(d => getAQIColor(d.aqi))
-            }
-        };
-        
-        Plotly.newPlot('comparisonChart', [trace], {
-            title: 'City AQI Comparison',
-            xaxis: { title: 'City' },
-            yaxis: { title: 'AQI' },
-            height: 400
+        const dataPromises = selectedCities.map(async city => {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/aqi/current/${city}`);
+                if (!resp.ok) return null;
+                const data = await resp.json();
+                return {
+                    city,
+                    aqi: data.aqi || 0,
+                    pm25: data.pm25 || data.pollutants?.pm25 || 0,
+                    pm10: data.pm10 || data.pollutants?.pm10 || 0,
+                    category: getAQICategory(data.aqi || 0)
+                };
+            } catch (_) { return null; }
         });
         
-    } catch (error) {
-        console.error('Error loading comparison:', error);
-        container.innerHTML = '<div class="error">Error loading comparison data</div>';
+        const cityData = (await Promise.all(dataPromises)).filter(Boolean);
+        
+        if (!cityData.length) {
+            if (grid) grid.innerHTML = '<div class="no-data">No data available</div>';
+            return;
+        }
+        
+        // Render comparison grid
+        if (grid) {
+            grid.innerHTML = cityData.map(d => `
+                <div class="city-card">
+                    <div class="city-name">${d.city}</div>
+                    <div class="aqi-display ${getAQIColorClass(d.aqi)}">${d.aqi}</div>
+                    <div style="text-align:center;font-size:0.85em;color:#333;">${d.category}</div>
+                    <div style="margin-top:8px;font-size:0.8em;color:#666;">
+                        PM2.5: ${d.pm25.toFixed(1)} | PM10: ${d.pm10.toFixed(1)}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Render comparison chart
+        if (chart && typeof Plotly !== 'undefined') {
+            Plotly.newPlot('comparisonChart', [{
+                x: cityData.map(d => d.city),
+                y: cityData.map(d => d.aqi),
+                type: 'bar',
+                marker: {
+                    color: cityData.map(d => getAQIColor(d.aqi))
+                },
+                text: cityData.map(d => d.aqi),
+                textposition: 'auto'
+            }], {
+                title: 'AQI Comparison',
+                xaxis: { title: 'City' },
+                yaxis: { title: 'AQI' },
+                height: 400
+            });
+        }
+        
+    } catch (err) {
+        console.error('Error loading city comparison:', err);
+        if (grid) grid.innerHTML = '<div class="error">Error loading comparison</div>';
     }
 }
 
-// Alert Functions
+// Alert creation
 async function createAlert(event) {
-    event.preventDefault();
+    if (event) event.preventDefault();
     
-    const city = document.getElementById('alertCity').value;
-    const email = document.getElementById('alertEmail').value;
-    const threshold = parseInt(document.getElementById('alertThreshold').value);
+    const city = document.getElementById('alertCity')?.value;
+    const email = document.getElementById('alertEmail')?.value;
+    const threshold = document.getElementById('alertThreshold')?.value;
     
     if (!city || !email || !threshold) {
-        alert('Please fill all fields');
+        alert('Please fill in all fields');
         return;
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/alerts/create`, {
+        const resp = await fetch(`${API_BASE_URL}/alerts/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                city: city,
-                alert_type: 'threshold',
+                city,
                 contact: email,
-                threshold: threshold
+                threshold: parseInt(threshold, 10),
+                alert_type: 'email'
             })
         });
         
-        const result = await response.json();
-        
-        if (response.ok) {
+        if (resp.ok) {
             alert('Alert created successfully!');
-            document.getElementById('alertForm').reset();
+            document.getElementById('alertForm')?.reset();
             loadUserAlerts();
         } else {
-            alert('Error creating alert: ' + (result.error || 'Unknown error'));
+            const error = await resp.text();
+            alert(`Error creating alert: ${error}`);
         }
-    } catch (error) {
-        console.error('Error creating alert:', error);
+    } catch (err) {
+        console.error('Error creating alert:', err);
         alert('Error creating alert. Please try again.');
     }
 }
@@ -749,7 +732,8 @@ async function loadHealthRecommendations() {
         
         const health = getHealthImpact(data.aqi);
         
-        const healthContainer = document.getElementById('healthInfo');
+        // Corrected container ID (was healthInfo, actual HTML uses healthContent)
+        const healthContainer = document.getElementById('healthContent');
         if (!healthContainer) return;
         
         healthContainer.innerHTML = `
@@ -1187,152 +1171,44 @@ async function displayModelMetrics(city) {
     const activeModelEl = document.getElementById('activeModel');
     if (!container) return;
 
-    // Show loading state
-    container.innerHTML = '<div class="loading">Loading model performance...</div>';
-
+    container.innerHTML = '<div class="loading">Loading active training performance...</div>';
     try {
-        // First get the actual model being used for predictions
-        const forecastResp = await fetch(`${API_BASE_URL}/forecast/${city}?hours=1`);
-        let actualModel = null;
-        if (forecastResp.ok) {
-            const forecastData = await forecastResp.json();
-            actualModel = forecastData.model_used;
-        }
-
-        // Fetch comparison info (determines best model)
-        const compareResp = await fetch(`${API_BASE_URL}/models/compare?city=${city}`);
-        let compareData = null;
-        if (compareResp.ok) {
-            compareData = await compareResp.json();
-        }
-
-        const bestModel = actualModel || compareData?.best_model || null;
-        const bestR2 = typeof compareData?.best_r2_score === 'number' ? compareData.best_r2_score : null;
-
-        if (activeModelEl) {
-            activeModelEl.textContent = bestModel ? bestModel.replace(/_/g, ' ').toUpperCase() : 'N/A';
-            // Add/update a small badge with best R² next to Active Model
-            const selector = document.querySelector('.model-selector');
-            if (selector) {
-                let r2Badge = document.getElementById('bestR2Badge');
-                if (!r2Badge) {
-                    r2Badge = document.createElement('span');
-                    r2Badge.id = 'bestR2Badge';
-                    r2Badge.style.marginLeft = '10px';
-                    r2Badge.style.fontSize = '0.9em';
-                    r2Badge.style.padding = '4px 8px';
-                    r2Badge.style.borderRadius = '6px';
-                    r2Badge.style.background = '#eef2ff';
-                    r2Badge.style.color = '#374151';
-                    selector.appendChild(r2Badge);
-                }
-                r2Badge.textContent = bestR2 !== null ? `R²: ${bestR2.toFixed(3)}` : 'R²: --';
-            }
-        }
-
-        if (!bestModel) {
-            container.innerHTML = '<p class="no-data">No model performance data available yet. Train models to see metrics.</p>';
+        const resp = await fetch(`${API_BASE_URL}/models/active_training`);
+        if (!resp.ok) {
+            container.innerHTML = '<div class="error">No training performance available.</div>';
             return;
         }
-
-        // Fetch performance for ONLY the active model
-        const perfResp = await fetch(`${API_BASE_URL}/models/performance/${city}?model=${bestModel}&days=30`);
-        let perfData = null;
-        if (perfResp.ok) {
-            perfData = await perfResp.json();
-        }
-
-        // Get metrics for the active model
-        const comparison = compareData?.comparison || {};
-        const activeMetrics = comparison[bestModel] || perfData?.metrics?.[0] || {};
-
-        if (!activeMetrics || Object.keys(activeMetrics).length === 0) {
-            container.innerHTML = `<p class="no-data">No performance data available for ${bestModel}. Train the model to see metrics.</p>`;
-            return;
-        }
-
-        // Build single card for active model only
-        const m = {
-            model_name: bestModel,
-            r2_score: activeMetrics.r2_score ?? null,
-            rmse: activeMetrics.rmse ?? null,
-            mae: activeMetrics.mae ?? null,
-            mape: activeMetrics.mape ?? null,
-            last_updated: activeMetrics.last_updated ?? null
-        };
-
-        const cardsHtml = (() => {
-            const isBest = true; // Always true since we're only showing the active model
-            const displayName = m.model_name ? m.model_name.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN MODEL';
-            const r2 = m.r2_score !== null && m.r2_score !== undefined ? m.r2_score.toFixed(3) : '--';
-            const rmse = m.rmse !== null && m.rmse !== undefined ? m.rmse.toFixed(2) : '--';
-            const mae = m.mae !== null && m.mae !== undefined ? m.mae.toFixed(2) : '--';
-            const mape = m.mape !== null && m.mape !== undefined ? m.mape.toFixed(2) + '%' : '--';
-            
-            // Detect suspiciously perfect metrics (likely overfitting or insufficient data)
-            const isPerfect = m.r2_score >= 0.999 && m.rmse <= 0.01 && m.mae <= 0.01;
-            const warningHtml = isPerfect ? `
-                <div class="metric-warning" style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 12px 0; border-radius: 6px;">
-                    <strong>⚠️ Warning: Suspiciously Perfect Metrics</strong>
-                    <p style="margin: 4px 0 0 0; font-size: 0.9em; color: #92400e;">
-                        R² = 1.0 usually indicates overfitting or insufficient training data. 
-                        The model may not generalize well to new data. 
-                        <strong>Collect more data (weeks/months)</strong> for reliable predictions.
-                    </p>
+        const data = await resp.json();
+        if (activeModelEl) activeModelEl.textContent = (data.active_model || 'N/A').toUpperCase();
+        const r2 = typeof data.training_r2 === 'number' ? data.training_r2.toFixed(3) : '--';
+        const rmse = typeof data.metrics?.rmse === 'number' ? data.metrics.rmse.toFixed(2) : '--';
+        const mae = typeof data.metrics?.mae === 'number' ? data.metrics.mae.toFixed(2) : '--';
+        container.innerHTML = `
+            <div class="metric-card best-model-card">
+                <div class="metric-header">
+                    <span class="model-name">${data.active_model || 'UNKNOWN MODEL'}</span>
                 </div>
-            ` : '';
-            
-            return `
-                <div class="metric-card best-model-card">
-                    <div class="metric-header">
-                        <span class="model-name">${displayName} ⭐</span>
-                        ${m.last_updated ? `<span class="metric-updated">${m.last_updated}</span>` : ''}
+                <div class="metric-grid">
+                    <div class="metric-item">
+                        <span class="metric-label">Training R²</span>
+                        <span class="metric-value">${r2}</span>
                     </div>
-                    ${warningHtml}
-                    <div class="metric-grid">
-                        <div class="metric-item">
-                            <span class="metric-label">R²</span>
-                            <span class="metric-value">${r2}</span>
-                            <span class="metric-hint">Explained variance</span>
-                        </div>
-                        <div class="metric-item">
-                            <span class="metric-label">RMSE</span>
-                            <span class="metric-value">${rmse}</span>
-                            <span class="metric-hint">Avg error magnitude</span>
-                        </div>
-                        <div class="metric-item">
-                            <span class="metric-label">MAE</span>
-                            <span class="metric-value">${mae}</span>
-                            <span class="metric-hint">Mean abs error</span>
-                        </div>
-                        <div class="metric-item">
-                            <span class="metric-label">MAPE</span>
-                            <span class="metric-value">${mape}</span>
-                            <span class="metric-hint">Percent error</span>
-                        </div>
+                    <div class="metric-item">
+                        <span class="metric-label">RMSE</span>
+                        <span class="metric-value">${rmse}</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">MAE</span>
+                        <span class="metric-value">${mae}</span>
                     </div>
                 </div>
-            `;
-        })();
-
-        // Add legend/explanation
-        const legend = `
-            <div class="metrics-legend">
-                <p><strong>Active Model Performance:</strong> R² closer to 1 is better; RMSE/MAE lower is better; MAPE lower % is better.</p>
-            </div>
-        `;
-
-        container.innerHTML = legend + cardsHtml;
-
-        // Hide charts since we're only showing one model
-        const r2Chart = document.getElementById('modelR2Chart');
-        const errorChart = document.getElementById('modelErrorChart');
-        if (r2Chart) r2Chart.style.display = 'none';
-        if (errorChart) errorChart.style.display = 'none';
-
+                <div class="metrics-legend" style="margin-top:8px;">
+                    <p style="margin:0;font-size:0.85em;color:#555;">Training metrics loaded from saved file (${data.source || 'n/a'}). Only training performance is shown as requested.</p>
+                </div>
+            </div>`;
     } catch (err) {
-        console.error('Error loading model metrics:', err);
-        container.innerHTML = '<div class="error">Failed to load model metrics.</div>';
+        console.error('Error loading active training performance:', err);
+        container.innerHTML = '<div class="error">Failed to load active model performance.</div>';
     }
 }
 
@@ -1408,6 +1284,12 @@ async function loadCitiesForComparison() {
                 ${city.name}
             </button>
         `).join('');
+        
+        // Show initial message
+        const grid = document.getElementById('comparisonGrid');
+        if (grid && selectedCities.length === 0) {
+            grid.innerHTML = '<div class="no-data" style="text-align: center; padding: 40px;">👆 Select cities above to compare their air quality</div>';
+        }
     } catch (error) {
         console.error('Error loading cities for comparison:', error);
     }
@@ -1425,5 +1307,54 @@ async function loadCitiesForForecast() {
         `).join('');
     } catch (error) {
         console.error('Error loading cities for forecast:', error);
+    }
+}
+
+async function loadCitiesForTrends() {
+    try {
+        const cities = await getCities();
+        
+        const select = document.getElementById('trendCity');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Select a city...</option>' + cities.map(city => `
+            <option value="${city.name}">${city.name}</option>
+        `).join('');
+        
+        // Set default
+        if (cities.length > 0) {
+            select.value = cities[0].name;
+            loadHistoricalTrends();
+        }
+    } catch (error) {
+        console.error('Error loading cities for trends:', error);
+    }
+}
+
+async function loadCitiesForAlerts() {
+    try {
+        const cities = await getCities();
+        
+        const select = document.getElementById('alertCity');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Select a city...</option>' + cities.map(city => `
+            <option value="${city.name}">${city.name}</option>
+        `).join('');
+        
+        // Also load for health selector
+        const healthSelect = document.getElementById('healthCity');
+        if (healthSelect) {
+            healthSelect.innerHTML = '<option value="">Select a city...</option>' + cities.map(city => `
+                <option value="${city.name}">${city.name}</option>
+            `).join('');
+            // Set a default and load recommendations immediately
+            if (cities.length) {
+                healthSelect.value = cities[0].name;
+                loadHealthRecommendations();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading cities for alerts:', error);
     }
 }

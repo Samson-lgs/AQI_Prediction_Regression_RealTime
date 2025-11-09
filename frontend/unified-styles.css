@@ -473,9 +473,38 @@ body {
 
 .comparison-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 20px;
     margin: 20px 0;
+}
+
+.city-selector {
+    padding: 10px 16px;
+    margin: 5px;
+    border: 2px solid var(--border-color);
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 0.95em;
+}
+
+.city-selector:hover {
+    border-color: var(--primary-color);
+    background: #f5f7ff;
+}
+
+.city-selector.selected {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.selector-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
 .comparison-item {
@@ -619,6 +648,141 @@ td {
 
 tbody tr:hover {
     background: var(--light-bg);
+}
+
+/* ============================================================================
+   ALERTS & LISTS
+   ============================================================================ */
+
+.alert-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.alert-item {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: var(--transition);
+}
+
+.alert-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.alert-item button {
+    margin-left: 15px;
+}
+
+/* ============================================================================
+   LOADING & ERROR STATES
+   ============================================================================ */
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-size: 1.1em;
+}
+
+.loading::before {
+    content: '⏳ ';
+    font-size: 1.5em;
+}
+
+.error {
+    background: #fee;
+    border: 2px solid #fcc;
+    border-radius: 10px;
+    padding: 20px;
+    color: #c33;
+    text-align: center;
+}
+
+.no-data {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* ============================================================================
+   MODEL METRICS STYLES
+   ============================================================================ */
+
+.metric-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+}
+
+.best-model-card {
+    border: 2px solid var(--primary-color);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.model-name {
+    font-size: 1.1em;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+}
+
+.metric-item {
+    text-align: center;
+    padding: 12px;
+    background: var(--light-bg);
+    border-radius: 8px;
+}
+
+.metric-label {
+    display: block;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+.metric-value {
+    display: block;
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.metrics-legend {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.metrics-legend p {
+    margin: 4px 0;
 }
 
 .no-data {

@@ -31,6 +31,7 @@ ns_cities = api.namespace('cities', description='City operations')
 ns_aqi = api.namespace('aqi', description='AQI data operations')
 ns_forecast = api.namespace('forecast', description='Prediction operations')
 ns_models = api.namespace('models', description='Model management')
+ns_metrics = api.namespace('metrics', description='Model performance metrics')
 ns_alerts = api.namespace('alerts', description='Alert management')
 ns_retrain = api.namespace('retrain', description='Model retraining operations')
 
@@ -712,6 +713,317 @@ class ModelComparison(Resource):
         except Exception as e:
             logger.error(f"Error comparing models: {str(e)}")
             api.abort(500, f"Internal server error: {str(e)}")
+
+@ns_models.route('/active_training')
+class ActiveTrainingPerformance(Resource):
+    @ns_models.doc('get_active_training_performance')
+    @ns_models.param('city', 'City name (optional, currently informational)')
+    def get(self):
+        """Return only the active model (best at training time) and its training R².
+
+        Reads metrics JSON files from models/saved_models and selects the model with highest R²
+        among the available "*_latest_metrics.json" files. Falls back to timestamped metrics
+        if latest files are absent.
+        """
+        import os, json
+        from pathlib import Path
+        try:
+            _ = request.args.get('city')  # Reserved for future per-city models
+            base = Path('models') / 'saved_models'
+            if not base.exists():
+                api.abort(404, 'No saved model metrics found')
+
+            # Gather candidate metrics files
+            latest_files = list(base.glob('*_latest_metrics.json'))
+            metrics_files = latest_files or list(base.glob('*_metrics.json'))
+            if not metrics_files:
+                api.abort(404, 'No metrics files available')
+
+            best = None
+            best_r2 = float('-inf')
+            chosen_path = None
+
+            for f in metrics_files:
+                try:
+                    with open(f, 'r') as fh:
+                        data = json.load(fh)
+                    # Accept common keys
+                    r2 = data.get('r2')
+                    if r2 is None:
+                        r2 = data.get('r2_score')
+                    # Sometimes nested under 'metrics'
+                    if r2 is None and isinstance(data.get('metrics'), dict):
+                        r2 = data['metrics'].get('r2') or data['metrics'].get('r2_score')
+                    if r2 is None:
+                        continue
+                    if r2 > best_r2:
+                        best_r2 = r2
+                        best = data
+                        chosen_path = f
+                except Exception:
+                    continue
+
+            if best is None:
+                api.abort(404, 'Could not determine best model from metrics files')
+
+            # Infer model name from filename when not in JSON
+            model_name = best.get('model') or best.get('model_name')
+            if not model_name and chosen_path is not None:
+                stem = chosen_path.stem.replace('_latest_metrics', '').replace('_metrics', '')
+                # common stems like xgboost_latest, random_forest_2025...
+                if '_latest' in stem:
+                    model_name = stem.replace('_latest', '')
+                else:
+                    # remove trailing timestamp segments if present
+                    parts = stem.split('_')
+                    # heuristic: model is first part(s) until a numeric chunk
+                    acc = []
+                    for p in parts:
+                        if p.isdigit() or p[:4].isdigit():
+                            break
+                        acc.append(p)
+                    model_name = '_'.join(acc) if acc else stem
+
+            response = {
+                'active_model': model_name.upper().replace('_', ' ') if model_name else 'UNKNOWN',
+                'training_r2': round(float(best_r2), 3) if isinstance(best_r2, (int, float)) else None,
+                'metrics': {
+                    'r2': best.get('r2') or best.get('r2_score') or (best.get('metrics', {}) if isinstance(best.get('metrics'), dict) else {}).get('r2'),
+                    'rmse': best.get('rmse') or (best.get('metrics', {}) if isinstance(best.get('metrics'), dict) else {}).get('rmse'),
+                    'mae': best.get('mae') or (best.get('metrics', {}) if isinstance(best.get('metrics'), dict) else {}).get('mae'),
+                    'mape': best.get('mape') or (best.get('metrics', {}) if isinstance(best.get('metrics'), dict) else {}).get('mape')
+                },
+                'source': str(chosen_path.name) if chosen_path else None
+            }
+            return response, 200
+        except Exception as e:
+            logger.error(f"Error fetching active training performance: {e}", exc_info=True)
+            api.abort(500, f"Internal server error: {e}")
+
+# ============================================================================
+# Standardized Metrics Endpoints (New)
+# ============================================================================
+
+def _get_db_url_from_env():
+    """Resolve database URL from environment variables for PerformanceMonitor."""
+    import os
+    db_url = os.getenv('DATABASE_URL')
+    if db_url:
+        return db_url
+    host = os.getenv('DB_HOST', 'localhost')
+    name = os.getenv('DB_NAME', 'aqi_db')
+    user = os.getenv('DB_USER', 'postgres')
+    password = os.getenv('DB_PASSWORD', '')
+    port = os.getenv('DB_PORT', '5432')
+    return f"postgresql://{user}:{password}@{host}:{port}/{name}" if password else None
+
+@ns_metrics.route('/summary')
+class MetricsSummary(Resource):
+    @ns_metrics.doc('metrics_summary')
+    @ns_metrics.param('city', 'City name', required=True)
+    @ns_metrics.param('horizon', 'Forecast horizon (hours)', default=24)
+    @ns_metrics.param('days', 'Period (days) to aggregate over', default=30)
+    def get(self):
+        """Return standardized model performance summary for a city/horizon.
+
+        Schema:
+        {
+          city, horizon_hours, period_days, active_model, selection_metric,
+          metrics: {r2, rmse, mae, mape, count, mean_error, std_error},
+          comparison: [ {model, avg_r2, avg_rmse, avg_mae, avg_mape, total_predictions, data_points} ],
+          models_evaluated, last_updated, notes[], disclaimer
+        }
+        """
+        from monitoring.performance_monitor import PerformanceMonitor
+        import datetime as dt
+        from database.db_operations import DatabaseOperations
+        try:
+            city = request.args.get('city')
+            if not city:
+                api.abort(400, 'city parameter is required')
+            horizon = request.args.get('horizon', 24, type=int)
+            days = request.args.get('days', 30, type=int)
+
+            db_ops = DatabaseOperations()
+            # Derive candidate models from existing performance entries
+            perf_rows = db_ops.get_model_performance(city, None, days)
+            model_names = sorted({r['model_name'] for r in perf_rows}) if perf_rows else []
+
+            if not model_names:
+                return {
+                    'city': city,
+                    'horizon_hours': horizon,
+                    'period_days': days,
+                    'active_model': None,
+                    'metrics': None,
+                    'comparison': [],
+                    'models_evaluated': 0,
+                    'last_updated': dt.datetime.utcnow().isoformat() + 'Z',
+                    'notes': ['No performance data available yet. Train models to populate metrics.'],
+                    'disclaimer': 'Metrics unavailable due to insufficient historical predictions.'
+                }, 200
+
+            db_url = _get_db_url_from_env()
+            monitor = PerformanceMonitor(db_url) if db_url else None
+
+            comparison_rows = []
+            # Aggregate metrics per model via monitor for precise stats over raw predictions if available
+            for model in model_names:
+                try:
+                    metrics = monitor.calculate_metrics(model, city=city, horizon_hours=horizon,
+                                                        start_date=dt.datetime.utcnow() - dt.timedelta(days=days),
+                                                        end_date=dt.datetime.utcnow()) if monitor else None
+                except Exception:
+                    metrics = None
+                # Fallback to averaged performance table if monitor produced none
+                table_subset = [r for r in perf_rows if r['model_name'] == model]
+                avg_r2 = None
+                avg_rmse = None
+                avg_mae = None
+                avg_mape = None
+                if table_subset:
+                    # Compute simple averages ignoring None
+                    def safe_avg(key):
+                        vals = [row[key] for row in table_subset if row.get(key) is not None]
+                        return (sum(vals) / len(vals)) if vals else None
+                    avg_r2 = safe_avg('r2_score')
+                    avg_rmse = safe_avg('rmse')
+                    avg_mae = safe_avg('mae')
+                    avg_mape = safe_avg('mape')
+
+                comparison_rows.append({
+                    'model': model,
+                    'avg_r2': metrics['r2'] if metrics and metrics.get('r2') is not None else avg_r2,
+                    'avg_rmse': metrics['rmse'] if metrics and metrics.get('rmse') is not None else avg_rmse,
+                    'avg_mae': metrics['mae'] if metrics and metrics.get('mae') is not None else avg_mae,
+                    'avg_mape': metrics['mape'] if metrics and metrics.get('mape') is not None else avg_mape,
+                    'total_predictions': metrics['count'] if metrics else None,
+                    'data_points': len(table_subset)
+                })
+
+            # Select active model by highest avg_r2 (fallback to lowest avg_rmse if all None)
+            active_model = None
+            selection_metric = 'avg_r2'
+            valid_r2 = [r for r in comparison_rows if isinstance(r.get('avg_r2'), (int, float))]
+            if valid_r2:
+                active_model = max(valid_r2, key=lambda r: r['avg_r2'])['model']
+            else:
+                selection_metric = 'avg_rmse'
+                valid_rmse = [r for r in comparison_rows if isinstance(r.get('avg_rmse'), (int, float))]
+                active_model = min(valid_rmse, key=lambda r: r['avg_rmse'])['model'] if valid_rmse else comparison_rows[0]['model']
+
+            # Detailed metrics for active model
+            active_metrics_calc = None
+            if monitor and active_model:
+                try:
+                    active_metrics_calc = monitor.calculate_metrics(active_model, city=city, horizon_hours=horizon,
+                                                                    start_date=dt.datetime.utcnow() - dt.timedelta(days=days),
+                                                                    end_date=dt.datetime.utcnow())
+                except Exception:
+                    active_metrics_calc = None
+
+            # Fallback to averaged row metrics if monitor not available or insufficient data
+            active_row = next((r for r in comparison_rows if r['model'] == active_model), None)
+            final_metrics = None
+            if active_metrics_calc and active_metrics_calc.get('count', 0) >= 2:
+                final_metrics = {
+                    'r2': active_metrics_calc.get('r2'),
+                    'rmse': active_metrics_calc.get('rmse'),
+                    'mae': active_metrics_calc.get('mae'),
+                    'mape': active_metrics_calc.get('mape'),
+                    'count': active_metrics_calc.get('count'),
+                    'mean_error': active_metrics_calc.get('mean_error'),
+                    'std_error': active_metrics_calc.get('std_error')
+                }
+            elif active_row:
+                final_metrics = {
+                    'r2': active_row.get('avg_r2'),
+                    'rmse': active_row.get('avg_rmse'),
+                    'mae': active_row.get('avg_mae'),
+                    'mape': active_row.get('avg_mape'),
+                    'count': active_row.get('total_predictions'),
+                    'mean_error': None,
+                    'std_error': None
+                }
+
+            response = {
+                'city': city,
+                'horizon_hours': horizon,
+                'period_days': days,
+                'active_model': active_model,
+                'selection_metric': selection_metric,
+                'metrics': final_metrics,
+                'comparison': comparison_rows,
+                'models_evaluated': len(comparison_rows),
+                'last_updated': dt.datetime.utcnow().isoformat() + 'Z',
+                'notes': [
+                    'Higher R² indicates better variance explanation.',
+                    'Lower RMSE / MAE / MAPE values indicate better predictive accuracy.',
+                    'Selection metric used: ' + selection_metric
+                ],
+                'disclaimer': 'Metrics computed from stored predictions; reliability improves with more data points.'
+            }
+            return response, 200
+        except HTTPException as http_exc:
+            raise http_exc
+        except Exception as e:
+            logger.error(f"Error generating metrics summary: {e}", exc_info=True)
+            api.abort(500, f"Internal server error: {e}")
+
+@ns_metrics.route('/trends')
+class MetricsTrends(Resource):
+    @ns_metrics.doc('metrics_trends')
+    @ns_metrics.param('city', 'City name', required=True)
+    @ns_metrics.param('model', 'Model name', required=True)
+    @ns_metrics.param('horizon', 'Forecast horizon (hours)', default=24)
+    @ns_metrics.param('days', 'Days of trend', default=30)
+    def get(self):
+        """Return daily trend metrics for a model."""
+        from monitoring.performance_monitor import PerformanceMonitor
+        import datetime as dt
+        try:
+            city = request.args.get('city')
+            model = request.args.get('model')
+            horizon = request.args.get('horizon', 24, type=int)
+            days = request.args.get('days', 30, type=int)
+            if not city or not model:
+                api.abort(400, 'city and model are required')
+            db_url = _get_db_url_from_env()
+            if not db_url:
+                api.abort(500, 'Database URL not configured')
+            monitor = PerformanceMonitor(db_url)
+            df = monitor.get_performance_trends(model, city, horizon, days=days)
+            daily = []
+            if not df.empty:
+                for _, row in df.iterrows():
+                    daily.append({
+                        'date': row['date'].isoformat() if hasattr(row['date'], 'isoformat') else str(row['date']),
+                        'r2': row['r2'],
+                        'rmse': row['rmse'],
+                        'mae': row['mae'],
+                        'predictions': int(row['predictions']) if row.get('predictions') is not None else None
+                    })
+            summary = {
+                'avg_r2': float(df['r2'].mean()) if not df.empty else None,
+                'avg_rmse': float(df['rmse'].mean()) if not df.empty else None,
+                'avg_mae': float(df['mae'].mean()) if not df.empty else None,
+                'total_predictions': int(df['predictions'].sum()) if not df.empty else 0,
+                'days_covered': days
+            }
+            return {
+                'city': city,
+                'model': model,
+                'horizon_hours': horizon,
+                'days': days,
+                'daily': daily,
+                'summary': summary,
+                'generated_at': dt.datetime.utcnow().isoformat() + 'Z'
+            }, 200
+        except HTTPException as http_exc:
+            raise http_exc
+        except Exception as e:
+            logger.error(f"Error generating metrics trends: {e}", exc_info=True)
+            api.abort(500, f"Internal server error: {e}")
 
 # ============================================================================
 # Alert Management Endpoints

@@ -17,7 +17,7 @@ const config = {
   REFRESH_INTERVAL: 300000, // 5 minutes in milliseconds
   
   // AQI Standard
-  AQI_STANDARD: 'India NAQI', // India National AQI (CPCB Standard)
+  AQI_STANDARD: 'India NAQI', // India National AQI Standard
   SHOW_AQI_STANDARD: true, // Display AQI standard badge
   
   // AQI Category Thresholds (India NAQI)

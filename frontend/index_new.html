@@ -50,7 +50,7 @@
                         <div class="stat-label">Forecast Range</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">5</div>
+                        <div class="stat-number">3</div>
                         <div class="stat-label">ML Models</div>
                     </div>
                     <div class="stat-card">
@@ -86,7 +86,7 @@
                     <div class="feature-card">
                         <div class="feature-icon">🔮</div>
                         <h3>AI Predictions</h3>
-                        <p>48-hour AQI forecasts using 5 advanced machine learning algorithms</p>
+                        <p>48-hour AQI forecasts using 3 machine learning models (XGBoost, Random Forest, Linear Regression)</p>
                     </div>
                     <div class="feature-card">
                         <div class="feature-icon">⚖️</div>
@@ -357,15 +357,11 @@
             <!-- Model Performance -->
             <div class="card">
                 <h2>🎯 Prediction Model Performance</h2>
+                <p style="margin-top:-10px;color:#555;font-size:0.9em;">Showing only the active model's <strong>training performance</strong> (requested simplified view).</p>
                 <div class="model-selector">
-                    <label>Active Model: <strong id="activeModel">XGBoost</strong></label>
+                    <label>Active Model: <strong id="activeModel">--</strong></label>
                 </div>
                 <div id="metricsContainer" class="metrics-grid"></div>
-                <div class="model-charts" style="margin-top: 20px;">
-                    <h3 style="margin-bottom: 10px;">Model Metrics Overview</h3>
-                    <div id="modelR2Chart" style="min-height: 320px; margin-bottom: 20px;"></div>
-                    <div id="modelErrorChart" style="min-height: 360px;"></div>
-                </div>
             </div>
         </div>
     </section>
@@ -388,10 +384,10 @@
                             <strong>Backend:</strong> Flask, Python, PostgreSQL
                         </div>
                         <div class="tech-item">
-                            <strong>ML Models:</strong> XGBoost, Random Forest, LSTM, Linear Regression, Ensemble
+                            <strong>ML Models:</strong> XGBoost, Random Forest, Linear Regression
                         </div>
                         <div class="tech-item">
-                            <strong>Data Sources:</strong> OpenWeather API, IQAir, CPCB
+                            <strong>Data Sources:</strong> OpenWeather API, IQAir
                         </div>
                         <div class="tech-item">
                             <strong>Frontend:</strong> JavaScript, Leaflet.js, Plotly.js
