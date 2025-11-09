@@ -18,7 +18,7 @@ from pathlib import Path
 
 # Import feature engineering
 from feature_engineering.data_cleaner import DataCleaner
-from feature_engineering.feature_processor import FeatureProcessor
+from feature_engineering.advanced_features import AdvancedFeatureEngineer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -168,9 +168,15 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     cleaner = DataCleaner()
     df_cleaned = cleaner.clean_data(df)
     
-    # Process features
-    processor = FeatureProcessor()
-    df_processed = processor.create_features(df_cleaned)
+    # Process features with the new AdvancedFeatureEngineer
+    engineer = AdvancedFeatureEngineer()
+    df_processed = engineer.create_all_features(
+        df_cleaned,
+        include_lag=True,
+        include_rolling=True,
+        include_interactions=True,
+        include_weather=True
+    )
     
     logger.info(f"Final dataset: {len(df_processed)} records with {len(df_processed.columns)} features")
     
