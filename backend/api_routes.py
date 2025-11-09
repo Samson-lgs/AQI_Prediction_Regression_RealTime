@@ -469,21 +469,31 @@ class BatchCurrentAQI(Resource):
             results = []
             for city in city_list:
                 try:
-                    data = db.get_latest_pollution_data(city)
-                    if data:
-                        aqi_val = data.get('aqi_value') or data.get('aqi') or 0
-                        results.append({
-                            'city': city,
-                            'aqi': aqi_val,  # Use 'aqi' for consistency with frontend
-                            'aqi_value': aqi_val,  # Keep for backward compatibility
-                            'pm25': float(data.get('pm25', 0)) if data.get('pm25') else 0,
-                            'pm10': float(data.get('pm10', 0)) if data.get('pm10') else 0,
-                            'no2': float(data.get('no2', 0)) if data.get('no2') else 0,
-                            'so2': float(data.get('so2', 0)) if data.get('so2') else 0,
-                            'co': float(data.get('co', 0)) if data.get('co') else 0,
-                            'o3': float(data.get('o3', 0)) if data.get('o3') else 0,
-                            'timestamp': str(data.get('timestamp', ''))
-                        })
+                    # Use same logic as /current/<city> endpoint
+                    end_date = datetime.now()
+                    start_date = end_date - timedelta(hours=24)
+                    data = db.get_pollution_data(city, start_date, end_date)
+                    
+                    if data and len(data) > 0:
+                        # Get the latest record
+                        latest = max(data, key=lambda x: x['timestamp'])
+                        
+                        # Extract AQI value
+                        aqi_val = float(latest.get('aqi_value', 0)) if latest.get('aqi_value') is not None else 0
+                        
+                        if aqi_val > 0:  # Only include cities with valid AQI
+                            results.append({
+                                'city': city,
+                                'aqi': aqi_val,
+                                'aqi_value': aqi_val,
+                                'pm25': float(latest.get('pm25', 0)) if latest.get('pm25') else 0,
+                                'pm10': float(latest.get('pm10', 0)) if latest.get('pm10') else 0,
+                                'no2': float(latest.get('no2', 0)) if latest.get('no2') else 0,
+                                'so2': float(latest.get('so2', 0)) if latest.get('so2') else 0,
+                                'co': float(latest.get('co', 0)) if latest.get('co') else 0,
+                                'o3': float(latest.get('o3', 0)) if latest.get('o3') else 0,
+                                'timestamp': str(latest.get('timestamp', ''))
+                            })
                 except Exception as e:
                     logger.warning(f"Failed to fetch data for {city}: {str(e)}")
                     # Skip cities with errors, don't fail entire batch
