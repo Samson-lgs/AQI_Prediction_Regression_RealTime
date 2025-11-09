@@ -2,8 +2,10 @@
 // Update API_BASE_URL after deploying backend to Render
 
 const config = {
-  // Auto-detect environment: use production backend if deployed on GitHub Pages
-  API_BASE_URL: window.location.hostname.includes('github.io') 
+  // Auto-detect environment: use production backend if deployed on Vercel or GitHub Pages
+  API_BASE_URL: (window.location.hostname.includes('vercel.app') || 
+                 window.location.hostname.includes('github.io') ||
+                 window.location.hostname !== 'localhost')
     ? 'https://aqi-backend-api.onrender.com/api/v1'  // Render backend URL
     : 'http://localhost:5000/api/v1',
   

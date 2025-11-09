@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AQI Prediction & Real-Time Monitoring</title>
+    <link rel="stylesheet" href="frontend/unified-styles.css">
+    <!-- Plotly for charts -->
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+    <!-- Leaflet for maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌍 AQI Prediction & Real-Time Monitoring</h1>
+            <p>Track and predict air quality across major Indian cities</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-button active" onclick="showSection('live')">Live Dashboard</button>
+            <button class="tab-button" onclick="showSection('forecast')">Forecast</button>
+            <button class="tab-button" onclick="showSection('compare')">Compare Cities</button>
+            <button class="tab-button" onclick="showSection('alerts')">Alerts</button>
+        </nav>
+
+        <!-- Live Dashboard Section -->
+        <section id="live" class="tab-content active">
+            <h2>Live Air Quality Dashboard</h2>
+            
+            <div class="dashboard-grid">
+                <!-- City Rankings -->
+                <div class="card">
+                    <h3>Top Cities by AQI</h3>
+                    <div id="rankingsChart"></div>
+                </div>
+
+                <!-- Map -->
+                <div class="card">
+                    <h3>AQI Map</h3>
+                    <div id="map" style="height: 400px; border-radius: 8px;"></div>
+                </div>
+
+                <!-- Historical Trends -->
+                <div class="card full-width">
+                    <h3>Historical AQI Trends</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="trendsCity">Select City:</label>
+                            <select id="trendsCity" onchange="loadHistoricalTrends()">
+                                <option value="">--Select City--</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="trendsDays">Days:</label>
+                            <select id="trendsDays" onchange="loadHistoricalTrends()">
+                                <option value="7">7 days</option>
+                                <option value="14">14 days</option>
+                                <option value="30">30 days</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button type="button" class="btn btn-primary" onclick="loadHistoricalTrends()" style="margin-top: 24px;">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div id="aqiTrendChart"></div>
+                    <div id="pollutantsTrendChart" style="margin-top: 20px;"></div>
+                </div>
+
+                <!-- Health Recommendations -->
+                <div class="card full-width">
+                    <h3>Health Recommendations</h3>
+                    <div class="form-group">
+                        <label for="healthCity">Select City:</label>
+                        <select id="healthCity" onchange="loadHealthRecommendations()">
+                            <option value="">--Select City--</option>
+                        </select>
+                    </div>
+                    <div id="healthContent"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Forecast Section -->
+        <section id="forecast" class="tab-content">
+            <h2>AQI Forecast</h2>
+            <div class="card">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="forecastCity">Select City:</label>
+                        <select id="forecastCity">
+                            <option value="">--Select City--</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="forecastHours">Forecast Hours:</label>
+                        <select id="forecastHours">
+                            <option value="24">24 hours</option>
+                            <option value="48">48 hours</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="loadForecast()">Get Forecast</button>
+                    </div>
+                </div>
+                <div id="forecastChart"></div>
+            </div>
+        </section>
+
+        <!-- Compare Cities Section -->
+        <section id="compare" class="tab-content">
+            <h2>Compare Cities</h2>
+            <div class="card">
+                <p>Select up to 6 cities to compare:</p>
+                <div id="citySelectors"></div>
+                <button class="btn btn-primary" onclick="compareSelected()">Compare</button>
+                <div id="comparisonChart"></div>
+            </div>
+        </section>
+
+        <!-- Alerts Section -->
+        <section id="alerts" class="tab-content">
+            <h2>AQI Alerts</h2>
+            <div class="card">
+                <div id="alertsList"></div>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p>Data sources: CPCB, OpenWeather, IQAir | AQI Standard: India NAQI</p>
+    </footer>
+
+    <!-- Load configuration and main script -->
+    <script src="frontend/config.js"></script>
+    <script src="frontend/unified-app.js"></script>
+</body>
+</html>

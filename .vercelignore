@@ -1,0 +1,47 @@
+# Ignore backend and development files
+backend/
+api_handlers/
+database/
+ml_models/
+monitoring/
+scripts/
+tests/
+logs/
+data/
+docs/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+.env.local
+*.log
+
+# Ignore git files
+.git/
+.gitignore
+
+# Ignore Python and backend config
+requirements.txt
+runtime.txt
+Procfile
+render.yaml
+render-build.sh
+deploy.sh
+docker-compose.yml
+Dockerfile
+nginx.conf
+wsgi.py
+*.py
+
+# Keep only frontend files
+!frontend/
+!index.html
+!vercel.json
