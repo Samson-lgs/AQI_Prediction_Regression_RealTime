@@ -567,15 +567,52 @@ class ForecastSingle(Resource):
             timestamp = datetime.fromisoformat(latest['timestamp'].replace('Z', '+00:00')) if isinstance(latest['timestamp'], str) else latest['timestamp']
             result = predictor.get_best_prediction(city, pollutants, timestamp=timestamp)
             
+            # Use the median of all model predictions to reduce impact of outliers
+            all_preds = result.get('all_predictions', {})
+            if all_preds and len(all_preds) > 0:
+                pred_values = [v for v in all_preds.values() if v is not None and v > 0]
+                if pred_values:
+                    # Use median prediction instead of single model to avoid outliers
+                    median_prediction = np.median(pred_values)
+                    # If median is too different from current AQI, use current AQI as base
+                    current_aqi_val = float(latest.get('aqi_value', 100))
+                    if abs(median_prediction - current_aqi_val) > 100:
+                        base_aqi = current_aqi_val
+                        logger.warning(f"Median prediction ({median_prediction:.1f}) too far from current AQI ({current_aqi_val:.1f}), using current")
+                    else:
+                        base_aqi = median_prediction
+                else:
+                    base_aqi = float(latest.get('aqi_value', 100))
+            else:
+                base_aqi = result['aqi'] if result['aqi'] else float(latest.get('aqi_value', 100))
+            
             # Generate trend-based hourly predictions
             predictions = []
-            base_aqi = result['aqi'] if result['aqi'] else float(latest.get('aqi_value', 100))
             
             for h in range(1, hours + 1):
-                # Simple trend-based prediction with some variation
-                trend = np.sin(h / 6) * 12
-                noise = np.random.normal(0, 4)
-                predicted_aqi = max(0, int(base_aqi + trend + noise))
+                # Realistic diurnal variation: AQI tends to be higher in early morning/evening, lower in afternoon
+                # Hour of day for prediction
+                future_hour = (end_date + timedelta(hours=h)).hour
+                
+                # Diurnal pattern: multiply base by factor between 0.85 and 1.15
+                if 6 <= future_hour <= 9 or 18 <= future_hour <= 21:
+                    # Morning and evening rush hours: higher AQI (5-15% increase)
+                    diurnal_factor = 1.0 + np.random.uniform(0.05, 0.15)
+                elif 12 <= future_hour <= 16:
+                    # Afternoon: slightly lower AQI (0-10% decrease)
+                    diurnal_factor = 1.0 - np.random.uniform(0.0, 0.10)
+                else:
+                    # Night/early morning: moderate variation
+                    diurnal_factor = 1.0 + np.random.uniform(-0.05, 0.05)
+                
+                # Add small random noise (±5%)
+                noise_factor = 1.0 + np.random.uniform(-0.05, 0.05)
+                
+                # Calculate predicted AQI with minimum floor of 50% of base
+                predicted_aqi = int(base_aqi * diurnal_factor * noise_factor)
+                predicted_aqi = max(int(base_aqi * 0.5), predicted_aqi)  # Never drop below 50% of base
+                predicted_aqi = min(int(base_aqi * 1.5), predicted_aqi)  # Never exceed 150% of base
+                
                 confidence = 95 - (h * 0.6)
                 
                 predictions.append({
