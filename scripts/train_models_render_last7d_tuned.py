@@ -9,6 +9,7 @@ import json
 from ml_models.linear_regression_model import LinearRegressionAQI
 from ml_models.random_forest_model import RandomForestAQI
 from ml_models.xgboost_model import XGBoostAQI
+from feature_engineering.advanced_features import AdvancedFeatureEngineer
 
 SAVE_DIR = Path('models/saved_models')
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -16,34 +17,86 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 DATA_PATH = Path('render_pollution_last7d.csv')
 assert DATA_PATH.exists(), f"{DATA_PATH} not found. Run export_render_pollution_data.py first."
 
+print("Loading data...")
 df = pd.read_csv(DATA_PATH)
+print(f"Loaded {len(df)} rows from {DATA_PATH}")
+
+# Ensure timestamp column exists for feature engineering
+if 'timestamp' not in df.columns:
+    print("WARNING: No timestamp column found. Temporal features will be limited.")
+    df['timestamp'] = pd.date_range(end=datetime.now(), periods=len(df), freq='H')
 
 feature_cols = ["pm25", "pm10", "no2", "so2", "co", "o3"]
 
 def prepare(df: pd.DataFrame):
+    """Prepare data with feature engineering."""
     df = df.copy()
+    
     # Ensure numeric dtypes
     for c in feature_cols + ["aqi_value"]:
         df[c] = pd.to_numeric(df[c], errors='coerce')
+    
     # Drop rows without target
     df = df[df['aqi_value'].notna()]
+    print(f"After removing null AQI: {len(df)} rows")
+    
     # Median impute features
     medians = {c: float(df[c].median()) for c in feature_cols}
     for c in feature_cols:
         df[c] = df[c].fillna(medians[c])
+    
     # Clip extreme outliers per feature (1st-99th percentiles)
     for c in feature_cols:
         lo, hi = np.percentile(df[c], [1, 99])
         df[c] = df[c].clip(lo, hi)
-    X = df[feature_cols].copy()
-    y = df['aqi_value'].astype(float).copy()
-    return X, y, medians
+    
+    print("\n=== APPLYING FEATURE ENGINEERING ===")
+    # Apply advanced feature engineering
+    engineer = AdvancedFeatureEngineer()
+    df_engineered = engineer.create_all_features(
+        df,
+        include_lag=True,
+        include_rolling=True,
+        include_interactions=True,
+        include_weather=True
+    )
+    
+    # Remove rows with NaN from lag/rolling (first 24 hours typically)
+    df_clean = df_engineered.dropna()
+    print(f"After removing NaN from lag/rolling features: {len(df_clean)} rows")
+    
+    # Get all feature columns (base + engineered)
+    exclude_cols = ['aqi_value', 'timestamp', 'city', 'created_at', 'data_source', 'id']
+    all_feature_cols = [col for col in df_clean.columns 
+                        if col not in exclude_cols and not col.endswith('_city_mean')]
+    
+    print(f"Total features: {len(all_feature_cols)}")
+    print(f"  - Base features: {len(feature_cols)}")
+    print(f"  - Engineered features: {len(all_feature_cols) - len(feature_cols)}")
+    
+    X = df_clean[all_feature_cols].copy()
+    y = df_clean['aqi_value'].astype(float).copy()
+    
+    # Save feature names for inference
+    feature_metadata = {
+        'feature_columns': all_feature_cols,
+        'base_features': feature_cols,
+        'engineered_features': [f for f in all_feature_cols if f not in feature_cols]
+    }
+    
+    return X, y, medians, feature_metadata
 
-X, y, medians = prepare(df)
+X, y, medians, feature_metadata = prepare(df)
 
 # Save medians for inference consistency
 with open(SAVE_DIR / 'median_imputation.json', 'w') as f:
     json.dump(medians, f, indent=2)
+
+# Save feature metadata for inference
+with open(SAVE_DIR / 'feature_metadata.json', 'w') as f:
+    json.dump(feature_metadata, f, indent=2)
+
+print(f"\nFeature metadata saved with {len(feature_metadata['feature_columns'])} features")
 
 n = len(X)
 train_end = int(n * 0.6)

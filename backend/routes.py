@@ -79,10 +79,10 @@ def get_aqi_history(city):
 
 @api_bp.route('/forecast/<city>', methods=['GET'])
 def get_forecast(city):
-    """Get AQI forecast/prediction for a city using simple unified models"""
+    """Get AQI forecast/prediction for a city using unified models with feature engineering"""
     try:
         from database.db_operations import DatabaseOperations
-        from models.simple_predictor import get_predictor
+        from models.unified_predictor import get_predictor
         
         db = DatabaseOperations()
         predictor = get_predictor()
@@ -107,8 +107,11 @@ def get_forecast(city):
             'o3': float(latest['o3']) if latest.get('o3') is not None else None,
         }
         
-        # Get predictions from all models (no city parameter needed!)
-        result = predictor.get_best_prediction(pollutants)
+        # Get predictions from all models with feature engineering
+        # Pass city and timestamp for proper temporal feature generation
+        from datetime import datetime as dt
+        timestamp = dt.fromisoformat(latest['timestamp'].replace('Z', '+00:00')) if isinstance(latest['timestamp'], str) else latest['timestamp']
+        result = predictor.get_best_prediction(city, pollutants, timestamp=timestamp)
         
         # Generate hourly forecast (simple trend-based for now)
         hours = request.args.get('hours', 48, type=int)

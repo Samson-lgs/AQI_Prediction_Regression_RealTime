@@ -1,13 +1,42 @@
 """
-Simple Predictor - Loads and uses unified models trained on all city data
-No city parameter needed - just pass pollutant values!
+Simple Predictor - DEPRECATED - Use unified_predictor.py instead
+================================================================
+⚠️  WARNING: This predictor is DEPRECATED and kept only for backward compatibility.
+
+ISSUE: This predictor only uses 6 base pollutant features (pm25, pm10, no2, so2, co, o3)
+       but current models are trained with 106 features including temporal, lag, rolling, etc.
+
+RECOMMENDATION: Use models/unified_predictor.py which supports full feature engineering.
+
+Migration Guide:
+    OLD (simple_predictor):
+        from models.simple_predictor import get_predictor
+        predictor = get_predictor()
+        result = predictor.get_best_prediction(pollutants)
+    
+    NEW (unified_predictor):
+        from models.unified_predictor import get_predictor
+        predictor = get_predictor()
+        result = predictor.get_best_prediction(city, pollutants, timestamp=datetime.now())
+
+Status: Kept as backup/fallback only. Do not use in new code.
+Last Updated: November 9, 2025
+================================================================
 """
 
 import logging
+import warnings
 from pathlib import Path
 import pickle
 import json
 from typing import Dict, Optional
+
+# Issue deprecation warning when module is imported
+warnings.warn(
+    "simple_predictor.py is DEPRECATED. Use unified_predictor.py instead for full feature engineering support.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 logger = logging.getLogger(__name__)
 

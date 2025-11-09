@@ -420,9 +420,9 @@ class ForecastSingle(Resource):
     @ns_forecast.doc('get_forecast')
     @ns_forecast.param('hours', 'Hours ahead to forecast (1-48)', default=24)
     def get(self, city):
-        """Get AQI forecast for a single city using simple unified models"""
+        """Get AQI forecast for a single city using unified models with feature engineering"""
         try:
-            from models.simple_predictor import get_predictor
+            from models.unified_predictor import get_predictor
             from database.db_operations import DatabaseOperations
             
             hours = request.args.get('hours', 24, type=int)
@@ -453,8 +453,10 @@ class ForecastSingle(Resource):
                 'o3': float(latest['o3']) if latest.get('o3') is not None else None,
             }
             
-            # Get prediction from unified models (no city parameter!)
-            result = predictor.get_best_prediction(pollutants)
+            # Get prediction from unified models with feature engineering
+            # Pass city and timestamp for proper temporal feature generation
+            timestamp = datetime.fromisoformat(latest['timestamp'].replace('Z', '+00:00')) if isinstance(latest['timestamp'], str) else latest['timestamp']
+            result = predictor.get_best_prediction(city, pollutants, timestamp=timestamp)
             
             # Generate trend-based hourly predictions
             predictions = []
