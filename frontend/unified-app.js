@@ -259,6 +259,9 @@ async function loadHomeStats() {
                     const avgAqiEl = document.getElementById('currentAvgAQI');
                     if (avgAqiEl) avgAqiEl.textContent = avgAqi;
                 }
+            } else {
+                // Fallback: batch endpoint not available, skip stats
+                console.warn('Batch endpoint not available (404), skipping home stats');
             }
         } catch (err) {
             console.warn('Batch endpoint failed for home stats:', err);
@@ -296,6 +299,9 @@ async function loadTopCities() {
                     aqi: d.aqi_value || d.aqi || 0,
                     category: getAQICategory(d.aqi_value || d.aqi || 0)
                 })).filter(d => d.aqi > 0);
+            } else {
+                // Fallback: batch endpoint not available, show message
+                console.warn('Batch endpoint not available (404), skipping top cities');
             }
         } catch (err) {
             console.warn('Batch endpoint failed for top cities:', err);
