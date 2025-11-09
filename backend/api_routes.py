@@ -9,6 +9,7 @@ import logging
 import numpy as np
 from functools import wraps
 import sys
+from werkzeug.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -489,8 +490,11 @@ class ForecastSingle(Resource):
                 'generated_at': datetime.now().isoformat()
             }, 200
         
+        except HTTPException as http_exc:
+            # Propagate intentional HTTP errors (e.g. 400, 404) without masking them
+            raise http_exc
         except Exception as e:
-            logger.error(f"Error generating forecast: {str(e)}", exc_info=True)
+            logger.error(f"Error generating forecast (unexpected): {str(e)}", exc_info=True)
             api.abort(500, f"Internal server error: {str(e)}")
 
 @ns_forecast.route('/batch')
