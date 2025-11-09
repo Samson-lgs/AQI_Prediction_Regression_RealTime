@@ -3,6 +3,10 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import argparse
+from dotenv import load_dotenv
+
+# Load environment variables from .env so DATABASE_URL/DB_* are available when running this script directly
+load_dotenv()
 
 
 def get_conn():
