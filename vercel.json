@@ -1,10 +1,14 @@
 {
-  "buildCommand": "echo 'No build needed for static frontend'",
-  "outputDirectory": "frontend",
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/frontend/(.*)",
+      "dest": "/frontend/$1"
     }
   ],
   "headers": [
