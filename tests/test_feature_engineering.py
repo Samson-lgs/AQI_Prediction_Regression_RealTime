@@ -15,8 +15,31 @@ Demonstrates:
 import os
 import sys
 from datetime import datetime, timedelta
+# Ensure project root is on sys.path so local packages can be imported when running tests directly
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 from database.db_operations import DatabaseOperations
-from feature_engineering.feature_processor import FeatureProcessor
+# Robust import for FeatureProcessor: try normal import then fall back to loading by file path relative to ROOT_DIR
+try:
+    from feature_engineering.advanced_features import FeatureProcessor
+except Exception:
+    import importlib
+    import importlib.util
+    import os
+    # Try to find the module spec first (works when package is installable)
+    spec = importlib.util.find_spec("feature_engineering.feature_processor")
+    if spec is not None:
+        module = importlib.import_module("feature_engineering.feature_processor")
+        FeatureProcessor = getattr(module, "FeatureProcessor")
+    else:
+        # Fallback: load directly from file path relative to ROOT_DIR
+        fp = os.path.join(ROOT_DIR, "feature_engineering", "feature_processor.py")
+        spec = importlib.util.spec_from_file_location("feature_engineering.feature_processor", fp)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        FeatureProcessor = getattr(module, "FeatureProcessor")
 import pandas as pd
 
 def test_feature_engineering(city='Delhi', days=7):
