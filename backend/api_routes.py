@@ -261,19 +261,30 @@ class CurrentAQI(Resource):
             from api_handlers.aqi_calculator import calculate_india_aqi, get_aqi_category
             db = DatabaseOperations()
             
-            # Look for most recent data in the last 48 hours
+            # Primary window (24h) + fallback (72h) to reduce 404s when ingestion lags
             end_date = datetime.now()
-            start_date = end_date - timedelta(hours=48)
-            
-            # Get all recent data for this city, sorted by timestamp DESC
+            primary_window_hours = 24
+            fallback_window_hours = 72
+            start_date = end_date - timedelta(hours=primary_window_hours)
             data = db.get_pollution_data(city, start_date, end_date)
+
+            window_used = primary_window_hours
+            if not data:
+                widened_start = end_date - timedelta(hours=fallback_window_hours)
+                widened_data = db.get_pollution_data(city, widened_start, end_date)
+                if widened_data:
+                    data = widened_data
+                    window_used = fallback_window_hours
+                else:
+                    api.abort(404, f'No data found for {city} (checked {primary_window_hours}h & {fallback_window_hours}h windows)')
             
             if data and len(data) > 0:
-                # Group by data source and get the latest from each
+                # Build latest row per source by timestamp
                 sources_data = {}
                 for row in data:
                     source = row.get('data_source', 'Unknown')
-                    if source not in sources_data:
+                    existing = sources_data.get(source)
+                    if not existing or row['timestamp'] > existing['timestamp']:
                         sources_data[source] = row
                 
                 # Find the data point with highest AQI (most conservative estimate)
@@ -292,21 +303,38 @@ class CurrentAQI(Resource):
                 # Use the data with highest AQI (or first if none have AQI)
                 latest = best_data if best_data else data[0]
                 
-                # Recalculate AQI to get sub-indices
-                pm25 = float(latest.get('pm25', 0)) if latest.get('pm25') is not None else 0
-                pm10 = float(latest.get('pm10', 0)) if latest.get('pm10') is not None else 0
-                no2 = float(latest.get('no2', 0)) if latest.get('no2') is not None else 0
-                so2 = float(latest.get('so2', 0)) if latest.get('so2') is not None else 0
-                co = float(latest.get('co', 0)) if latest.get('co') is not None else 0
-                o3 = float(latest.get('o3', 0)) if latest.get('o3') is not None else 0
+                # Extract pollutant values (None preserved for imputation logic)
+                def safe_float(v):
+                    try:
+                        return float(v) if v is not None else None
+                    except Exception:
+                        return None
+                pm25 = safe_float(latest.get('pm25'))
+                pm10 = safe_float(latest.get('pm10'))
+                no2 = safe_float(latest.get('no2'))
+                so2 = safe_float(latest.get('so2'))
+                co = safe_float(latest.get('co'))
+                o3 = safe_float(latest.get('o3'))
+
+                pollutants_available = [p for p in [pm25, pm10, no2, so2, co, o3] if p is not None]
+                recalc_possible = len(pollutants_available) >= 2  # Need at least some pollutants
                 
-                india_result = calculate_india_aqi(pm25, pm10, no2, so2, co, o3)
-                category = get_aqi_category(india_result['aqi'])
+                if recalc_possible:
+                    india_result = calculate_india_aqi(pm25 or 0, pm10 or 0, no2 or 0, so2 or 0, co or 0, o3 or 0)
+                    final_aqi = india_result['aqi']
+                    category = get_aqi_category(final_aqi)
+                else:
+                    # Use stored AQI if recalculation isn't meaningful
+                    final_aqi = float(latest.get('aqi_value', 0)) if latest.get('aqi_value') is not None else 0
+                    india_result = {'aqi': final_aqi, 'sub_index': {}, 'dominant_pollutant': None}
+                    category = get_aqi_category(final_aqi)
+
+                data_age_hours = round((end_date - latest['timestamp']).total_seconds() / 3600, 2)
                 
                 return {
                     'city': city,
                     'timestamp': str(latest.get('timestamp', '')),
-                    'aqi': india_result['aqi'],
+                    'aqi': final_aqi,
                     'category': category['category'],
                     'color': category['color'],
                     'data_source': latest.get('data_source', 'Unknown'),
@@ -321,6 +349,9 @@ class CurrentAQI(Resource):
                         'co': co,
                         'o3': o3
                     },
+                    'data_age_hours': data_age_hours,
+                    'window_hours_used': window_used,
+                    'recalculated': recalc_possible,
                     'note': 'AQI calculated using India NAQI standard. Values may differ from CPCB due to different monitoring stations and averaging periods.'
                 }, 200
             else:

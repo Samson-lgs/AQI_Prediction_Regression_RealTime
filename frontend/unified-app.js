@@ -990,7 +990,17 @@ function displayCurrentVsPredicted() {
         }
         currentAqiStatus.textContent = statusText;
     }
-    if (currentTimestamp) currentTimestamp.textContent = new Date(currentData.timestamp).toLocaleString();
+    if (currentTimestamp) {
+        const ts = new Date(currentData.timestamp);
+        currentTimestamp.textContent = ts.toLocaleString();
+        // Append data age if available
+        if (typeof currentData.data_age_hours === 'number') {
+            const hrs = Math.floor(currentData.data_age_hours);
+            const mins = Math.round((currentData.data_age_hours - hrs) * 60);
+            const ageText = ` • Updated ${hrs}h ${mins}m ago`;
+            currentTimestamp.textContent += ageText;
+        }
+    }
     
     // Update predicted values
     const predictedAqiValue = document.getElementById('predictedAqiValue');
