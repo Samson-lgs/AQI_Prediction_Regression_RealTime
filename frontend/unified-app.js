@@ -490,45 +490,102 @@ async function initializeDashboard() {
                 }
                 const layerGroup = L.layerGroup();
 
-                // Limit initial markers and apply small concurrency to avoid network spikes
-                const mapCities = cities.slice(0, 30);
+                // Show all cities on the map using batch endpoint for faster loading
+                const mapCities = cities;
 
-                const worker = async (city) => {
-                    const name = city.name || city.city || city;
-                    let lat = city.lat || city.latitude || (CITY_COORDS[name]?.lat);
-                    let lon = city.lon || city.lng || city.longitude || (CITY_COORDS[name]?.lon);
-                    if (lat == null || lon == null) return;
-                    try {
-                        const data = await fetchCurrentAQI(name);
-                        const aqi = data?.aqi || 0;
-                        const color = getAQIColor(aqi);
-                        const category = getAQICategory(aqi);
-                        const marker = L.circleMarker([lat, lon], {
-                            radius: 10,
-                            color: '#222',
-                            weight: 1,
-                            fillColor: color,
-                            fillOpacity: 0.85
-                        }).bindPopup(`
-                            <div style="min-width:160px;font-family:inherit;">
-                                <strong>${name}</strong><br>
-                                AQI: <span style="font-weight:600;color:${color}">${aqi}</span><br>
-                                <small>${category}</small>
-                            </div>
-                        `);
-                        layerGroup.addLayer(marker);
-                    } catch (_) { /* ignore */ }
-                };
+                // Try batch endpoint first for all cities
+                try {
+                    const cityNames = mapCities.map(c => c.name || c.city || c).join(',');
+                    const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
+                    
+                    if (batchResp.ok) {
+                        const batchData = await batchResp.json();
+                        const aqiByCity = new Map();
+                        
+                        // Cache batch results
+                        if (batchData.data && Array.isArray(batchData.data)) {
+                            batchData.data.forEach(item => {
+                                const cityKey = item.city?.toLowerCase();
+                                if (cityKey) {
+                                    aqiByCity.set(cityKey, item);
+                                    currentAQICache.set(cityKey, {
+                                        data: item,
+                                        timestamp: Date.now()
+                                    });
+                                }
+                            });
+                        }
 
-                const CONCURRENCY = 6;
-                let i = 0;
-                const runners = new Array(CONCURRENCY).fill(0).map(async () => {
-                    while (i < mapCities.length) {
-                        const idx = i++;
-                        await worker(mapCities[idx]);
+                        // Create markers for all cities
+                        mapCities.forEach(city => {
+                            const name = city.name || city.city || city;
+                            let lat = city.lat || city.latitude || (CITY_COORDS[name]?.lat);
+                            let lon = city.lon || city.lng || city.longitude || (CITY_COORDS[name]?.lon);
+                            if (lat == null || lon == null) return;
+
+                            const data = aqiByCity.get(name.toLowerCase());
+                            const aqi = data?.aqi || 0;
+                            const color = getAQIColor(aqi);
+                            const category = getAQICategory(aqi);
+                            const marker = L.circleMarker([lat, lon], {
+                                radius: 10,
+                                color: '#222',
+                                weight: 1,
+                                fillColor: color,
+                                fillOpacity: 0.85
+                            }).bindPopup(`
+                                <div style="min-width:160px;font-family:inherit;">
+                                    <strong>${name}</strong><br>
+                                    AQI: <span style="font-weight:600;color:${color}">${aqi}</span><br>
+                                    <small>${category}</small>
+                                </div>
+                            `);
+                            layerGroup.addLayer(marker);
+                        });
+                    } else {
+                        throw new Error('Batch endpoint failed, falling back');
                     }
-                });
-                await Promise.all(runners);
+                } catch (batchErr) {
+                    console.warn('Batch map loading failed, using individual fetches:', batchErr);
+                    
+                    // Fallback: individual fetches with concurrency limiting
+                    const worker = async (city) => {
+                        const name = city.name || city.city || city;
+                        let lat = city.lat || city.latitude || (CITY_COORDS[name]?.lat);
+                        let lon = city.lon || city.lng || city.longitude || (CITY_COORDS[name]?.lon);
+                        if (lat == null || lon == null) return;
+                        try {
+                            const data = await fetchCurrentAQI(name);
+                            const aqi = data?.aqi || 0;
+                            const color = getAQIColor(aqi);
+                            const category = getAQICategory(aqi);
+                            const marker = L.circleMarker([lat, lon], {
+                                radius: 10,
+                                color: '#222',
+                                weight: 1,
+                                fillColor: color,
+                                fillOpacity: 0.85
+                            }).bindPopup(`
+                                <div style="min-width:160px;font-family:inherit;">
+                                    <strong>${name}</strong><br>
+                                    AQI: <span style="font-weight:600;color:${color}">${aqi}</span><br>
+                                    <small>${category}</small>
+                                </div>
+                            `);
+                            layerGroup.addLayer(marker);
+                        } catch (_) { /* ignore */ }
+                    };
+
+                    const CONCURRENCY = 10; // Increased concurrency since we're loading all cities
+                    let i = 0;
+                    const runners = new Array(CONCURRENCY).fill(0).map(async () => {
+                        while (i < mapCities.length) {
+                            const idx = i++;
+                            await worker(mapCities[idx]);
+                        }
+                    });
+                    await Promise.all(runners);
+                }
 
                 layerGroup.addTo(currentMap);
                 currentMap._aqiLayer = layerGroup;
