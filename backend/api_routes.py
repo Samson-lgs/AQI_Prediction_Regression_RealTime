@@ -471,9 +471,11 @@ class BatchCurrentAQI(Resource):
                 try:
                     data = db.get_latest_pollution_data(city)
                     if data:
+                        aqi_val = data.get('aqi_value') or data.get('aqi') or 0
                         results.append({
                             'city': city,
-                            'aqi': data.get('aqi_value', 0),
+                            'aqi': aqi_val,  # Use 'aqi' for consistency with frontend
+                            'aqi_value': aqi_val,  # Keep for backward compatibility
                             'pm25': float(data.get('pm25', 0)) if data.get('pm25') else 0,
                             'pm10': float(data.get('pm10', 0)) if data.get('pm10') else 0,
                             'no2': float(data.get('no2', 0)) if data.get('no2') else 0,

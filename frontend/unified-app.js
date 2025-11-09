@@ -500,6 +500,7 @@ async function initializeDashboard() {
                     
                     if (batchResp.ok) {
                         const batchData = await batchResp.json();
+                        console.log('Batch AQI response:', batchData);
                         const aqiByCity = new Map();
                         
                         // Cache batch results
@@ -516,15 +517,32 @@ async function initializeDashboard() {
                             });
                         }
 
+                        console.log(`Map: Processing ${mapCities.length} cities, batch returned ${aqiByCity.size} with data`);
+
                         // Create markers for all cities
+                        let markersCreated = 0;
                         mapCities.forEach(city => {
                             const name = city.name || city.city || city;
                             let lat = city.lat || city.latitude || (CITY_COORDS[name]?.lat);
                             let lon = city.lon || city.lng || city.longitude || (CITY_COORDS[name]?.lon);
-                            if (lat == null || lon == null) return;
+                            if (lat == null || lon == null) {
+                                console.warn(`No coordinates for ${name}`);
+                                return;
+                            }
 
                             const data = aqiByCity.get(name.toLowerCase());
-                            const aqi = data?.aqi || 0;
+                            if (!data) {
+                                console.warn(`No AQI data for ${name}`);
+                                return;
+                            }
+
+                            // Handle both aqi and aqi_value field names
+                            const aqi = data.aqi_value || data.aqi || 0;
+                            if (!aqi || aqi === 0) {
+                                console.warn(`Invalid AQI (${aqi}) for ${name}`, data);
+                                return;
+                            }
+
                             const color = getAQIColor(aqi);
                             const category = getAQICategory(aqi);
                             const marker = L.circleMarker([lat, lon], {
@@ -541,7 +559,10 @@ async function initializeDashboard() {
                                 </div>
                             `);
                             layerGroup.addLayer(marker);
+                            markersCreated++;
                         });
+                        
+                        console.log(`Created ${markersCreated} markers on map`);
                     } else {
                         throw new Error('Batch endpoint failed, falling back');
                     }
