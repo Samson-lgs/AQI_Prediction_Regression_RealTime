@@ -433,12 +433,25 @@ async function initializeDashboard() {
             const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
             if (batchResp.ok) {
                 const batchData = await batchResp.json();
-                rankingData = (batchData.data || []).map(d => ({ city: d.city, aqi: d.aqi || 0 }));
+                console.log('Rankings batch response:', batchData);
+                // Handle both aqi and aqi_value field names
+                rankingData = (batchData.data || [])
+                    .map(d => {
+                        const aqi = d.aqi_value || d.aqi;
+                        return aqi != null && aqi > 0 ? { city: d.city, aqi: aqi } : null;
+                    })
+                    .filter(Boolean); // Filter out null entries
+                
+                console.log(`Rankings: ${rankingData.length} cities with valid AQI data`);
+                
                 // Cache the results
                 batchData.data?.forEach(d => {
                     const key = (d.city || '').toLowerCase();
                     currentAQICache.set(key, { data: d, ts: Date.now() });
                 });
+            } else {
+                console.error('Batch endpoint returned error:', batchResp.status);
+                throw new Error(`HTTP ${batchResp.status}`);
             }
         } catch (batchErr) {
             console.warn('Batch endpoint failed, falling back to individual requests:', batchErr);
@@ -446,7 +459,8 @@ async function initializeDashboard() {
             const rankingPromises = rankingsCities.map(async city => {
                 try {
                     const data = await fetchCurrentAQI(city.name);
-                    return { city: city.name, aqi: data?.aqi || 0 };
+                    const aqi = data?.aqi_value || data?.aqi || 0;
+                    return aqi > 0 ? { city: city.name, aqi } : null;
                 } catch (_) { return null; }
             });
             rankingData = (await Promise.all(rankingPromises)).filter(Boolean);
@@ -454,22 +468,38 @@ async function initializeDashboard() {
         
         rankingData.sort((a, b) => b.aqi - a.aqi);
         
+        console.log('Rankings data to display:', rankingData);
+        
         if (rankingData.length && typeof Plotly !== 'undefined') {
             const rankingsChart = document.getElementById('rankingsChart');
             if (rankingsChart) {
-                Plotly.newPlot('rankingsChart', [{
-                    x: rankingData.map(d => d.city),
-                    y: rankingData.map(d => d.aqi),
-                    type: 'bar',
-                    marker: {
-                        color: rankingData.map(d => getAQIColor(d.aqi))
-                    }
-                }], {
-                    title: 'Cities by AQI Level',
-                    xaxis: { title: 'City' },
-                    yaxis: { title: 'AQI' },
-                    height: 400
-                });
+                try {
+                    Plotly.newPlot('rankingsChart', [{
+                        x: rankingData.map(d => d.city),
+                        y: rankingData.map(d => d.aqi),
+                        type: 'bar',
+                        marker: {
+                            color: rankingData.map(d => getAQIColor(d.aqi))
+                        }
+                    }], {
+                        title: 'Cities by AQI Level',
+                        xaxis: { title: 'City' },
+                        yaxis: { title: 'AQI' },
+                        height: 400
+                    });
+                    console.log('Rankings chart rendered successfully');
+                } catch (plotErr) {
+                    console.error('Error rendering rankings chart:', plotErr);
+                }
+            } else {
+                console.warn('Rankings chart element not found');
+            }
+        } else {
+            if (!rankingData.length) {
+                console.warn('No ranking data available to display');
+            }
+            if (typeof Plotly === 'undefined') {
+                console.warn('Plotly library not loaded');
             }
         }
         
@@ -537,8 +567,8 @@ async function initializeDashboard() {
                             }
 
                             // Handle both aqi and aqi_value field names
-                            const aqi = data.aqi_value || data.aqi || 0;
-                            if (!aqi || aqi === 0) {
+                            const aqi = data.aqi_value || data.aqi;
+                            if (aqi == null || aqi <= 0) {
                                 console.warn(`Invalid AQI (${aqi}) for ${name}`, data);
                                 return;
                             }
