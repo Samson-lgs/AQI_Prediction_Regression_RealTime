@@ -434,13 +434,22 @@ class ForecastSingle(Resource):
             predictor = get_predictor()
             db = DatabaseOperations()
             
-            # Get current data
+            # Get current data (adaptive window up to 72h fallback)
             end_date = datetime.now()
-            start_date = end_date - timedelta(hours=24)
+            primary_window_hours = 24
+            fallback_window_hours = 72
+            start_date = end_date - timedelta(hours=primary_window_hours)
             current_data = db.get_pollution_data(city, start_date, end_date)
-            
+
             if not current_data:
-                api.abort(404, f"No recent data available for {city}")
+                # Fallback: widen window to 72h to use last available record rather than hard 404
+                widened_start = end_date - timedelta(hours=fallback_window_hours)
+                widened_data = db.get_pollution_data(city, widened_start, end_date)
+                if widened_data:
+                    logger.warning(f"No data in last {primary_window_hours}h for {city}; using older sample within {fallback_window_hours}h window")
+                    current_data = widened_data
+                else:
+                    api.abort(404, f"No recent data available for {city} (checked {primary_window_hours}h & {fallback_window_hours}h windows)")
             
             # Prepare pollutants from latest reading
             latest = current_data[0]
