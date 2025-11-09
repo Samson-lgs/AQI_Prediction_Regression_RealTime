@@ -285,7 +285,7 @@ async function getCityCoordinates(cityName) {
     return null;
 }
 
-// Trends Functions (simplified placeholder to avoid runtime errors after cleanup)
+// Trends Functions (robust handling for backend response shapes)
 async function loadHistoricalTrends() {
     try {
         const citySelect = document.getElementById('trendCity');
@@ -294,27 +294,83 @@ async function loadHistoricalTrends() {
         const days = daysSelect?.value || 30;
         if (!city) return;
 
-        const resp = await fetch(`${API_BASE_URL}/aqi/history/${city}?days=${days}`);
-        if (!resp.ok) throw new Error('Failed to load history');
-        const data = await resp.json();
+        const resp = await fetch(`${API_BASE_URL}/aqi/history/${encodeURIComponent(city)}?days=${days}`);
+        if (!resp.ok) throw new Error(`Failed to load history (${resp.status})`);
+        const payload = await resp.json();
+
+        // Support both formats: { data: [...] } or direct array [...]
+        const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
+
         const aqiDiv = document.getElementById('aqiTrendChart');
-        if (aqiDiv) {
-            if (!Array.isArray(data) || !data.length) {
-                aqiDiv.innerHTML = '<div class="no-data">No historical data</div>';
-            } else if (typeof Plotly !== 'undefined') {
-                Plotly.newPlot('aqiTrendChart', [{
-                    x: data.map(d => d.timestamp || d.date || d.time),
-                    y: data.map(d => d.aqi),
-                    type: 'scatter',
-                    mode: 'lines+markers',
-                    name: 'AQI'
-                }], { title: `AQI Trend - ${city}`, height: 350 });
+        if (!aqiDiv) return;
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+            aqiDiv.innerHTML = '<div class="no-data">No historical data</div>';
+            const polDiv = document.getElementById('pollutantsTrendChart');
+            if (polDiv) polDiv.innerHTML = '';
+            return;
+        }
+
+        const getTs = (d) => d.timestamp || d.date || d.time;
+        const getAQI = (d) => {
+            if (typeof d.aqi === 'number') return d.aqi;
+            if (typeof d.aqi_value === 'number') return d.aqi_value;
+            if (typeof d.value === 'number') return d.value;
+            return 0;
+        };
+
+        const x = rows.map(getTs);
+        const y = rows.map(getAQI);
+
+        if (typeof Plotly !== 'undefined') {
+            // Main AQI trend
+            Plotly.newPlot('aqiTrendChart', [{
+                x,
+                y,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'AQI',
+                line: { color: '#10b981' }
+            }], { title: `AQI Trend - ${city}`, height: 360, xaxis: { title: 'Time' }, yaxis: { title: 'AQI' } });
+
+            // Optional pollutants trends if present
+            const polDiv = document.getElementById('pollutantsTrendChart');
+            if (polDiv) {
+                const traces = [];
+                const addTrace = (key, label, color) => {
+                    const vals = rows.map(d => typeof d[key] === 'number' ? d[key] : null);
+                    if (vals.some(v => v !== null)) {
+                        traces.push({ x, y: vals, type: 'scatter', mode: 'lines', name: label, line: { color } });
+                    }
+                };
+                addTrace('pm25', 'PM2.5', '#6366f1');
+                addTrace('pm10', 'PM10', '#f59e0b');
+                addTrace('no2', 'NO2', '#ef4444');
+                addTrace('so2', 'SO2', '#10b981');
+                addTrace('o3', 'O3', '#3b82f6');
+                addTrace('co', 'CO', '#a855f7');
+
+                if (traces.length) {
+                    Plotly.newPlot('pollutantsTrendChart', traces, {
+                        title: `Pollutants Trend - ${city}`,
+                        height: 360,
+                        xaxis: { title: 'Time' },
+                        yaxis: { title: 'Concentration' },
+                        legend: { orientation: 'h' }
+                    });
+                } else {
+                    polDiv.innerHTML = '';
+                }
             }
+        } else {
+            aqiDiv.innerHTML = '<div class="no-data">Plotly not loaded</div>';
         }
     } catch (err) {
         console.error('Error loading historical trends:', err);
         const aqiDiv = document.getElementById('aqiTrendChart');
         if (aqiDiv) aqiDiv.innerHTML = '<div class="error">Error loading trends</div>';
+        const polDiv = document.getElementById('pollutantsTrendChart');
+        if (polDiv) polDiv.innerHTML = '';
     }
 }
 
