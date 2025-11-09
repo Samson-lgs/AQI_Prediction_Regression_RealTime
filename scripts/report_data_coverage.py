@@ -2,6 +2,7 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
+import argparse
 
 
 def get_conn():
@@ -35,6 +36,11 @@ Example (PowerShell):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Report data coverage for pollution_data table.")
+    parser.add_argument('--city', help='Optional city filter to report only this city')
+    parser.add_argument('--hours', type=int, default=24, help='Recent window (hours) to inspect for latest availability (default 24)')
+    args = parser.parse_args()
+
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Overall min/max and total rows
@@ -106,6 +112,26 @@ def main():
             cov_24h = coverage_window(24)
             cov_48h = coverage_window(48)
             cov_168h = coverage_window(168)
+
+            # Optional city filter diagnostics (recent availability)
+            if args.city:
+                cur.execute(
+                    """
+                    SELECT timestamp, pm25, pm10, no2, so2, co, o3, aqi_value
+                    FROM pollution_data
+                    WHERE city=%s AND timestamp >= NOW() - INTERVAL %s
+                    ORDER BY timestamp DESC
+                    LIMIT 5;
+                    """,
+                    (args.city, f"{args.hours} hours")
+                )
+                recent_rows = cur.fetchall()
+                print(f"\nRecent samples for {args.city} (last {args.hours}h, up to 5 rows):")
+                if recent_rows:
+                    for r in recent_rows:
+                        print(f"  {r['timestamp']}: AQI={r['aqi_value']} PM2.5={r['pm25']} PM10={r['pm10']}")
+                else:
+                    print("  (no rows found in this window)")
 
             print("==== DATA COVERAGE SUMMARY ====")
             print(f"Total rows: {total_rows}")
