@@ -20,6 +20,9 @@ let liveInitialized = false; // Prevent heavy re-inits on Live section
 // null = unknown, true = available, false = not available (skip calling)
 let BATCH_SUPPORTED = null;
 
+// Global cooldown timestamp (ms since epoch) set when we hit 429 to pause further requests
+let RATE_LIMITED_UNTIL = 0;
+
 // AQI fetch cache to reduce repeated network calls
 const AQI_CACHE_TTL_MS = 120000; // 2 minutes
 const currentAQICache = new Map(); // key: city name, value: { data, ts }
@@ -126,6 +129,11 @@ const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
 // Rate-limit aware current AQI fetch with cache + backoff for 429s
 async function fetchAQICurrentWithBackoff(cityName, retries = 1, delayMs = 700) {
+    const nowGlobal = Date.now();
+    if (nowGlobal < RATE_LIMITED_UNTIL) {
+        // Respect global cooldown: skip hitting endpoint until window expires
+        return null;
+    }
     const key = (cityName || '').toLowerCase();
     const now = Date.now();
     const cached = currentAQICache.get(key);
@@ -134,14 +142,44 @@ async function fetchAQICurrentWithBackoff(cityName, retries = 1, delayMs = 700) 
     }
     try {
         const resp = await fetch(`${API_BASE_URL}/aqi/current/${encodeURIComponent(cityName)}`);
-        if (resp.status === 429 && retries > 0) {
-            await sleep(delayMs);
-            return fetchAQICurrentWithBackoff(cityName, retries - 1, delayMs * 1.5);
+        if (resp.status === 429) {
+            // Activate a 2 minute global cooldown and attempt limited retry if allowed
+            RATE_LIMITED_UNTIL = Date.now() + (2 * 60 * 1000);
+            if (retries > 0) {
+                await sleep(delayMs);
+                return fetchAQICurrentWithBackoff(cityName, retries - 1, delayMs * 1.5);
+            }
+            return null;
         }
         if (!resp.ok) return null;
         const data = await resp.json();
         currentAQICache.set(key, { data, ts: now });
         return data;
+    } catch (_) {
+        return null;
+    }
+}
+
+// Single request endpoint fetching all cities current AQI (if backend supports it)
+async function fetchAllCurrentAQI() {
+    const nowGlobal = Date.now();
+    if (nowGlobal < RATE_LIMITED_UNTIL) return null;
+    try {
+        const resp = await fetch(`${API_BASE_URL}/aqi/all/current`);
+        if (resp.status === 429) {
+            RATE_LIMITED_UNTIL = Date.now() + (2 * 60 * 1000);
+            return null;
+        }
+        if (!resp.ok) return null;
+        const json = await resp.json();
+        const rows = Array.isArray(json?.data) ? json.data : [];
+        // Prime cache
+        rows.forEach(r => {
+            if (r && r.city) {
+                currentAQICache.set(r.city.toLowerCase(), { data: r, ts: Date.now() });
+            }
+        });
+        return rows;
     } catch (_) {
         return null;
     }
@@ -300,22 +338,36 @@ async function loadHomeStats() {
             }
         }
 
-        // Fallback: limited individual fetches with backoff (only if batch not used)
+        // Fallback: attempt single all-cities endpoint; if unavailable perform very limited per-city fetches
         if (!batchUsed) {
-            const limited = sampleCities.slice(0, 5); // keep small to avoid rate limit
-            const results = [];
-            for (const city of limited) {
-                const data = await fetchAQICurrentWithBackoff(city.name, 1);
-                if (data && (data.aqi || data.aqi_value)) {
-                    results.push(data.aqi || data.aqi_value);
+            const allRows = await fetchAllCurrentAQI();
+            if (Array.isArray(allRows) && allRows.length) {
+                const sampleSet = new Set(sampleCities.map(c => c.name.toLowerCase()));
+                const values = allRows
+                    .filter(r => r.city && sampleSet.has(r.city.toLowerCase()))
+                    .map(r => Number(r.aqi ?? r.aqi_value ?? 0))
+                    .filter(v => v > 0);
+                if (values.length) {
+                    const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+                    const avgAqiEl = document.getElementById('currentAvgAQI');
+                    if (avgAqiEl) avgAqiEl.textContent = avg;
                 }
-                // small delay between requests
-                await sleep(250);
-            }
-            if (results.length) {
-                const avg = Math.round(results.reduce((a, b) => a + b, 0) / results.length);
-                const avgAqiEl = document.getElementById('currentAvgAQI');
-                if (avgAqiEl) avgAqiEl.textContent = avg;
+            } else {
+                // Rate-limit conscious per-city fallback (smaller set, longer delays)
+                const limited = sampleCities.slice(0, 3);
+                const results = [];
+                for (const city of limited) {
+                    const data = await fetchAQICurrentWithBackoff(city.name, 1, 900);
+                    if (data && (data.aqi || data.aqi_value)) {
+                        results.push(data.aqi || data.aqi_value);
+                    }
+                    await sleep(600); // spread calls
+                }
+                if (results.length) {
+                    const avg = Math.round(results.reduce((a, b) => a + b, 0) / results.length);
+                    const avgAqiEl = document.getElementById('currentAvgAQI');
+                    if (avgAqiEl) avgAqiEl.textContent = avg;
+                }
             }
         }
         
@@ -365,21 +417,33 @@ async function loadTopCities() {
         }
 
         if (!batchUsed) {
-            const limited = topCities.slice(0, 5);
-            const tempData = [];
-            for (const city of limited) {
-                const data = await fetchAQICurrentWithBackoff(city.name, 1);
-                if (data && (data.aqi || data.aqi_value)) {
-                    const aqiVal = data.aqi || data.aqi_value || 0;
-                    tempData.push({
-                        name: city.name,
-                        aqi: aqiVal,
-                        category: getAQICategory(aqiVal)
-                    });
+            const allRows = await fetchAllCurrentAQI();
+            if (Array.isArray(allRows) && allRows.length) {
+                const topSet = new Set(topCities.map(c => c.name.toLowerCase()));
+                cityData = allRows
+                    .filter(r => r.city && topSet.has(r.city.toLowerCase()))
+                    .map(r => {
+                        const val = Number(r.aqi ?? r.aqi_value ?? 0);
+                        return val > 0 ? { name: r.city, aqi: val, category: getAQICategory(val) } : null;
+                    })
+                    .filter(Boolean);
+            } else {
+                const limited = topCities.slice(0, 3);
+                const tempData = [];
+                for (const city of limited) {
+                    const data = await fetchAQICurrentWithBackoff(city.name, 1, 900);
+                    if (data && (data.aqi || data.aqi_value)) {
+                        const aqiVal = data.aqi || data.aqi_value || 0;
+                        tempData.push({
+                            name: city.name,
+                            aqi: aqiVal,
+                            category: getAQICategory(aqiVal)
+                        });
+                    }
+                    await sleep(600);
                 }
-                await sleep(250);
+                cityData = tempData;
             }
-            cityData = tempData;
         }
 
         const grid = document.getElementById('topCitiesGrid');
