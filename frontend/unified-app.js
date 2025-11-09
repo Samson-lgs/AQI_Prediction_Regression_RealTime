@@ -242,23 +242,26 @@ async function loadHomeStats() {
         const totalCitiesEl = document.getElementById('totalCities');
         if (totalCitiesEl) totalCitiesEl.textContent = cities.length;
         
-        // Get current AQI for a sample of cities (to avoid too many requests)
+        // Get current AQI for a sample of cities using BATCH endpoint
         const sampleCities = cities.slice(0, 10);
-        const aqiPromises = sampleCities.map(city => 
-            fetch(`${API_BASE_URL}/aqi/current/${city.name}`)
-                .then(r => r.ok ? r.json() : null)
-                .catch(() => null)
-        );
+        const cityNames = sampleCities.map(c => c.name).join(',');
         
-        const allAqi = await Promise.all(aqiPromises);
-        const validAqi = allAqi.filter(data => data && data.aqi);
-        
-        if (validAqi.length > 0) {
-            const avgAqi = Math.round(
-                validAqi.reduce((sum, data) => sum + data.aqi, 0) / validAqi.length
-            );
-            const avgAqiEl = document.getElementById('currentAvgAQI');
-            if (avgAqiEl) avgAqiEl.textContent = avgAqi;
+        try {
+            const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
+            if (batchResp.ok) {
+                const batchData = await batchResp.json();
+                const validAqi = (batchData.data || []).filter(d => d.aqi || d.aqi_value);
+                
+                if (validAqi.length > 0) {
+                    const avgAqi = Math.round(
+                        validAqi.reduce((sum, data) => sum + (data.aqi || data.aqi_value), 0) / validAqi.length
+                    );
+                    const avgAqiEl = document.getElementById('currentAvgAQI');
+                    if (avgAqiEl) avgAqiEl.textContent = avgAqi;
+                }
+            }
+        } catch (err) {
+            console.warn('Batch endpoint failed for home stats:', err);
         }
         
         // Update data sources (OpenWeather API, IQAir - 2 sources)
@@ -279,21 +282,24 @@ async function loadTopCities() {
         const cities = await getCities();
         if (!cities.length) return;
 
-        // Take a sample of top cities (first 8 for now)
+        // Take a sample of top cities using BATCH endpoint
         const topCities = cities.slice(0, 8);
-        const cityDataPromises = topCities.map(async city => {
-            try {
-                const resp = await fetch(`${API_BASE_URL}/aqi/current/${city.name}`);
-                if (!resp.ok) return null;
-                const aqiData = await resp.json();
-                return {
-                    name: city.name,
-                    aqi: aqiData.aqi || 0,
-                    category: getAQICategory(aqiData.aqi || 0)
-                };
-            } catch (_) { return null; }
-        });
-        const cityData = (await Promise.all(cityDataPromises)).filter(Boolean);
+        const cityNames = topCities.map(c => c.name).join(',');
+        
+        let cityData = [];
+        try {
+            const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
+            if (batchResp.ok) {
+                const batchData = await batchResp.json();
+                cityData = (batchData.data || []).map(d => ({
+                    name: d.city,
+                    aqi: d.aqi_value || d.aqi || 0,
+                    category: getAQICategory(d.aqi_value || d.aqi || 0)
+                })).filter(d => d.aqi > 0);
+            }
+        } catch (err) {
+            console.warn('Batch endpoint failed for top cities:', err);
+        }
 
         const grid = document.getElementById('topCitiesGrid');
         if (!grid) return;
