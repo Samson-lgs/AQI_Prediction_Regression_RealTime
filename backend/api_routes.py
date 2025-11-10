@@ -260,7 +260,12 @@ class CurrentAQI(Resource):
         try:
             from database.db_operations import DatabaseOperations
             from api_handlers.aqi_calculator import calculate_india_aqi, get_aqi_category
-            db = DatabaseOperations()
+            try:
+                db = DatabaseOperations()
+            except Exception as db_err:
+                logger.error(f"Database connection failed: {db_err}")
+                # Return mock data when database is unavailable
+                api.abort(503, f'Database unavailable: {str(db_err)}')
             
             # Primary window (24h) + fallback (72h) to reduce 404s when ingestion lags
             end_date = datetime.now()
@@ -371,7 +376,11 @@ class AQIHistory(Resource):
         """Get historical AQI data for a city"""
         try:
             from database.db_operations import DatabaseOperations
-            db = DatabaseOperations()
+            try:
+                db = DatabaseOperations()
+            except Exception as db_err:
+                logger.error(f"Database connection failed: {db_err}")
+                api.abort(503, f'Database unavailable: {str(db_err)}')
             
             days = request.args.get('days', 7, type=int)
             end_date = datetime.now()
@@ -415,7 +424,11 @@ class AllCitiesCurrentAQI(Resource):
         """Get current AQI for all cities"""
         try:
             from database.db_operations import DatabaseOperations
-            db = DatabaseOperations()
+            try:
+                db = DatabaseOperations()
+            except Exception as db_err:
+                logger.error(f"Database connection failed: {db_err}")
+                api.abort(503, f'Database unavailable: {str(db_err)}')
             
             all_data = db.get_all_cities_current_data()
             
@@ -452,7 +465,11 @@ class BatchCurrentAQI(Resource):
         """Get current AQI for multiple cities in a single request (performance optimization)"""
         try:
             from database.db_operations import DatabaseOperations
-            db = DatabaseOperations()
+            try:
+                db = DatabaseOperations()
+            except Exception as db_err:
+                logger.error(f"Database connection failed: {db_err}")
+                api.abort(503, f'Database unavailable: {str(db_err)}')
             
             cities_param = request.args.get('cities', '')
             if not cities_param:
@@ -530,8 +547,17 @@ class ForecastSingle(Resource):
             if hours < 1 or hours > 48:
                 api.abort(400, "Hours must be between 1 and 48")
             
-            predictor = get_predictor()
-            db = DatabaseOperations()
+            try:
+                predictor = get_predictor()
+            except Exception as pred_err:
+                logger.error(f"Failed to load predictor: {pred_err}")
+                api.abort(503, f'Model predictor unavailable: {str(pred_err)}')
+            
+            try:
+                db = DatabaseOperations()
+            except Exception as db_err:
+                logger.error(f"Database connection failed: {db_err}")
+                api.abort(503, f'Database unavailable: {str(db_err)}')
             
             # Get current data (adaptive window up to 72h fallback)
             end_date = datetime.now()
