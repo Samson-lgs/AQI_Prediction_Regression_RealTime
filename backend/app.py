@@ -165,7 +165,10 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    
+
+    # Determine debug mode from environment (FLASK_DEBUG=1 enables debug + reloader)
+    debug_mode = os.getenv('FLASK_DEBUG', '0') == '1'
     logger.info("Starting Flask application on http://0.0.0.0:5000")
-    logger.info("Starting with standard WSGI (production mode)")
-    app.run(debug=True, port=5000, host='0.0.0.0')
+    logger.info("Starting with standard WSGI (%s mode)" % ("debug" if debug_mode else "production"))
+    # Only enable the reloader when in debug to avoid process fork issues on certain environments
+    app.run(debug=debug_mode, use_reloader=debug_mode, port=5000, host='0.0.0.0')
