@@ -1698,7 +1698,29 @@ async function loadCitiesForComparison() {
         const container = document.getElementById('citySelectors');
         if (!container) return;
         
-        container.innerHTML = cities.slice(0, 20).map(city => `
+        // Show loading message
+        container.innerHTML = '<div class="no-data">Loading cities with AQI data...</div>';
+        
+        // Fetch all current AQI data to filter cities that have data
+        let citiesWithAQI = [];
+        
+        const allRows = await fetchAllCurrentAQI();
+        if (Array.isArray(allRows) && allRows.length) {
+            // Get cities that have AQI data
+            const citySet = new Set(allRows.filter(r => r.city && (r.aqi > 0 || r.aqi_value > 0)).map(r => r.city));
+            citiesWithAQI = cities.filter(c => citySet.has(c.name));
+        } else {
+            // Fallback: show all cities if we can't fetch AQI data
+            citiesWithAQI = cities;
+        }
+        
+        if (citiesWithAQI.length === 0) {
+            container.innerHTML = '<div class="no-data">No cities with AQI data available</div>';
+            return;
+        }
+        
+        // Display all cities with AQI data
+        container.innerHTML = citiesWithAQI.map(city => `
             <button class="city-selector" onclick="toggleCitySelection('${city.name}')">
                 ${city.name}
             </button>
@@ -1707,10 +1729,19 @@ async function loadCitiesForComparison() {
         // Show initial message
         const grid = document.getElementById('comparisonGrid');
         if (grid && selectedCities.length === 0) {
-            grid.innerHTML = '<div class="no-data" style="text-align: center; padding: 40px;">👆 Select cities above to compare their air quality</div>';
+            grid.innerHTML = `<div class="no-data" style="text-align: center; padding: 40px;">
+                👆 Select cities above to compare their air quality<br>
+                <small style="color: #666; margin-top: 10px; display: block;">
+                    ${citiesWithAQI.length} cities available with AQI data
+                </small>
+            </div>`;
         }
     } catch (error) {
         console.error('Error loading cities for comparison:', error);
+        const container = document.getElementById('citySelectors');
+        if (container) {
+            container.innerHTML = '<div class="no-data">Error loading cities. Please refresh the page.</div>';
+        }
     }
 }
 
@@ -1721,9 +1752,12 @@ async function loadCitiesForForecast() {
         const select = document.getElementById('forecastCity');
         if (!select) return;
         
+        // Show all cities for forecast selection
         select.innerHTML = '<option value="">Select a city...</option>' + cities.map(city => `
             <option value="${city.name}">${city.name}</option>
         `).join('');
+        
+        console.log(`Loaded ${cities.length} cities for forecast selection`);
     } catch (error) {
         console.error('Error loading cities for forecast:', error);
     }
