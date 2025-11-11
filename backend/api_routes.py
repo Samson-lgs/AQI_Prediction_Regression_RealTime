@@ -599,24 +599,32 @@ class ForecastSingle(Resource):
             timestamp = datetime.fromisoformat(latest['timestamp'].replace('Z', '+00:00')) if isinstance(latest['timestamp'], str) else latest['timestamp']
             result = predictor.get_best_prediction(city, pollutants, timestamp=timestamp)
             
-            # Use the median of all model predictions to reduce impact of outliers
-            all_preds = result.get('all_predictions', {})
-            if all_preds and len(all_preds) > 0:
-                pred_values = [v for v in all_preds.values() if v is not None and v > 0]
-                if pred_values:
-                    # Use median prediction instead of single model to avoid outliers
-                    median_prediction = np.median(pred_values)
-                    # If median is too different from current AQI, use current AQI as base
-                    current_aqi_val = float(latest.get('aqi_value', 100))
-                    if abs(median_prediction - current_aqi_val) > 100:
-                        base_aqi = current_aqi_val
-                        logger.warning(f"Median prediction ({median_prediction:.1f}) too far from current AQI ({current_aqi_val:.1f}), using current")
-                    else:
-                        base_aqi = median_prediction
-                else:
-                    base_aqi = float(latest.get('aqi_value', 100))
+            # Get current AQI from database
+            current_aqi_val = float(latest.get('aqi_value', 100))
+            
+            # Use the XGBoost model prediction as the base
+            model_predicted_aqi = result.get('aqi')
+            model_name = result.get('model', 'unknown')
+            
+            logger.info(f"Forecast for {city}: Current AQI={current_aqi_val:.1f}, Model={model_name}, Predicted={model_predicted_aqi}")
+            
+            # Use model prediction if available and reasonable
+            if model_predicted_aqi and model_predicted_aqi > 0:
+                base_aqi = model_predicted_aqi
             else:
-                base_aqi = result['aqi'] if result['aqi'] else float(latest.get('aqi_value', 100))
+                # Fallback: try median of all models
+                all_preds = result.get('all_predictions', {})
+                if all_preds and len(all_preds) > 0:
+                    pred_values = [v for v in all_preds.values() if v is not None and v > 0]
+                    if pred_values:
+                        base_aqi = np.median(pred_values)
+                        logger.info(f"Using median of models: {base_aqi:.1f}")
+                    else:
+                        base_aqi = current_aqi_val
+                        logger.warning(f"No valid model predictions, using current AQI: {current_aqi_val:.1f}")
+                else:
+                    base_aqi = current_aqi_val
+                    logger.warning(f"No model predictions available, using current AQI: {current_aqi_val:.1f}")
             
             # Generate trend-based hourly predictions with realistic temporal progression
             predictions = []
@@ -687,18 +695,24 @@ class ForecastSingle(Resource):
             # Reset random seed
             np.random.seed(None)
             
-            return {
+            # Log final predictions
+            if predictions:
+                logger.info(f"Generated {len(predictions)} predictions for {city}: First={predictions[0]['predicted_aqi']}, Last={predictions[-1]['predicted_aqi']}")
+            
+            response = {
                 'city': city,
                 'model_used': result['model'],
-                'current_aqi': int(base_aqi),
-                'predicted_aqi': int(result['aqi']) if result['aqi'] else None,
+                'current_aqi': int(current_aqi_val),
+                'predicted_aqi': int(base_aqi),
                 'all_model_predictions': result['all_predictions'],
                 'available_models': predictor.available_models(),
                 'forecast_hours': hours,
                 'predictions': predictions,
-                'note': 'Unified model trained on all cities - city-agnostic prediction',
+                'note': f'XGBoost prediction: {base_aqi:.1f} AQI, with diurnal variations applied',
                 'generated_at': datetime.now().isoformat()
-            }, 200
+            }
+            
+            return response, 200
         
         except HTTPException as http_exc:
             # Propagate intentional HTTP errors (e.g. 400, 404) without masking them
