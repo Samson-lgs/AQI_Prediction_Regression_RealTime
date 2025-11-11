@@ -1295,18 +1295,33 @@ async function loadPredictions() {
         if (currentAqiValue) currentAqiValue.textContent = 'Loading...';
         if (predictedAqiValue) predictedAqiValue.textContent = 'Loading...';
         
-        // Load current AQI
-        const currentResponse = await fetch(`${API_BASE_URL}/aqi/current/${city}`);
+        // Add cache-busting timestamp to ensure fresh data
+        const cacheBuster = `_=${Date.now()}`;
+        
+        // Load current AQI with cache-busting
+        const currentResponse = await fetch(`${API_BASE_URL}/aqi/current/${city}?${cacheBuster}`, {
+            cache: 'no-cache',
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        });
         
         if (!currentResponse.ok) {
             throw new Error(`Failed to load current AQI: ${currentResponse.status} ${currentResponse.statusText}`);
         }
         
         currentData = await currentResponse.json();
+        console.log(`Loaded current AQI for ${city}: ${currentData.aqi || currentData.aqi_value || 0}`);
         
-        // Load prediction
-        // Corrected to /forecast/ namespace (previously /aqi/forecast/ caused 404)
-        const predictionResponse = await fetch(`${API_BASE_URL}/forecast/${city}?hours=${hours}`);
+        // Load prediction with cache-busting
+        const predictionResponse = await fetch(`${API_BASE_URL}/forecast/${city}?hours=${hours}&${cacheBuster}`, {
+            cache: 'no-cache',
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        });
 
         if (!predictionResponse.ok) {
             if (predictionResponse.status === 404) {

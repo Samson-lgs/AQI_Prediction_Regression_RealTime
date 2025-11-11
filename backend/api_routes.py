@@ -621,8 +621,8 @@ class ForecastSingle(Resource):
             # Generate trend-based hourly predictions with realistic temporal progression
             predictions = []
             
-            # Set random seed based on city and timestamp for consistent predictions
-            seed_value = hash(city + end_date.strftime("%Y%m%d%H")) % (2**32)
+            # Set random seed based on city, timestamp, and forecast hours for consistent but varied predictions
+            seed_value = hash(city + end_date.strftime("%Y%m%d%H") + str(hours)) % (2**32)
             np.random.seed(seed_value)
             
             # Generate a base trend (slight increase/decrease over time)
