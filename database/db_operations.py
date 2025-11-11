@@ -145,7 +145,7 @@ class DatabaseOperations:
         except Exception as e:
             logger.warning(f"Could not create alerts table: {e}")
 
-        logger.info("All tables created successfully for 56 cities!")
+        logger.info("All tables created successfully for 97 cities!")
 
     # -------------------------------
     # Alerts table and operations

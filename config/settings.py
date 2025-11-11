@@ -10,7 +10,6 @@ OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 IQAIR_API_KEY = os.getenv('IQAIR_API_KEY')
 
 # API Base URLs
-CPCB_BASE_URL = "https://api.cpcb.gov.in/api/v1"
 OPENWEATHER_BASE_URL = "http://api.openweathermap.org/data/2.5"
 IQAIR_BASE_URL = "http://api.airvisual.com/v2"
 

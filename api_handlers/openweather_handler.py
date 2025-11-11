@@ -26,7 +26,6 @@ class OpenWeatherHandler:
         'Noida': (28.5921, 77.1845),
         'Ghaziabad': (28.6692, 77.4538),
         'Gurugram': (28.4595, 77.0266),
-        'Gurgaon': (28.4595, 77.0266),  # Same as Gurugram
         'Faridabad': (28.4089, 77.3178),
         'Greater Noida': (28.4744, 77.5040),
         'Chandigarh': (30.7333, 76.7794),
@@ -114,6 +113,24 @@ class OpenWeatherHandler:
         'Shillong': (25.5729, 91.8933),
         'Agartala': (23.8103, 91.2868),
         'Dibrugarh': (27.4728, 94.9103),
+        'Silchar': (24.8333, 92.7789),
+        'Kohima': (25.6747, 94.1086),
+        'Aizawl': (23.7367, 92.7173),
+        
+        # Additional Important Cities
+        'Dehradun': (30.3165, 78.0322),
+        'Shimla': (31.1048, 77.1734),
+        'Jammu': (32.7266, 74.8570),
+        'Mangalore': (12.9141, 74.8560),
+        'Tiruchirappalli': (10.7905, 78.7047),
+        'Puducherry': (11.9416, 79.8083),
+        'Guntur': (16.3067, 80.4365),
+        'Nellore': (14.4426, 79.9865),
+        'Belgaum': (15.8497, 74.4977),
+        'Amravati': (20.9374, 77.7796),
+        'Kolhapur': (16.7050, 74.2433),
+        'Ajmer': (26.4499, 74.6399),
+        'Bikaner': (28.0229, 73.3119),
     }
     
     def fetch_weather_data(self, city: str) -> Optional[Dict[str, Any]]:

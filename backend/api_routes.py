@@ -21,7 +21,7 @@ api = Api(
     api_bp,
     version='1.0',
     title='AQI Prediction API',
-    description='Real-time Air Quality Index Prediction System for 67 Indian Cities',
+    description='Real-time Air Quality Index Prediction System for 97 Indian Cities',
     doc='/docs'
     # Remove prefix here - already in Blueprint url_prefix
 )
@@ -113,9 +113,15 @@ class CityList(Resource):
     def get(self):
         """Get list of all supported cities"""
         try:
-            from config.settings import CITIES, PRIORITY_CITIES
+            from config.settings import PRIORITY_CITIES
+            from api_handlers.openweather_handler import OpenWeatherHandler
+            
+            # Get all cities that have coordinates defined (97 cities)
+            handler = OpenWeatherHandler()
+            all_cities = list(handler.CITY_COORDINATES.keys())
+            
             cities_data = []
-            for city in CITIES:
+            for city in sorted(all_cities):
                 cities_data.append({
                     'name': city,
                     'priority': city in PRIORITY_CITIES

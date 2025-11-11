@@ -26,7 +26,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.settings import CITIES
 from database.db_operations import DatabaseOperations
 from ml_models.linear_regression_model import LinearRegressionAQI
 from ml_models.random_forest_model import RandomForestAQI
@@ -43,12 +42,18 @@ def fetch_all_data(db: DatabaseOperations, days: int) -> pd.DataFrame:
     """Fetch ALL pollution data from ALL cities and combine."""
     logger.info(f"📥 Fetching data from ALL cities (last {days} days)...")
     
+    # Get all cities that have coordinates defined
+    from api_handlers.openweather_handler import OpenWeatherHandler
+    handler = OpenWeatherHandler()
+    ALL_CITIES = list(handler.CITY_COORDINATES.keys())
+    logger.info(f"   Training on {len(ALL_CITIES)} cities with defined coordinates")
+    
     all_dfs = []
     end = datetime.utcnow()
     start = end - timedelta(days=days)
     
     total_samples = 0
-    for city in CITIES:
+    for city in ALL_CITIES:
         try:
             rows = db.get_pollution_data(city, start, end) or []
             if rows:

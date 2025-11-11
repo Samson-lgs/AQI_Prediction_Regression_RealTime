@@ -27,67 +27,98 @@ let RATE_LIMITED_UNTIL = 0;
 const AQI_CACHE_TTL_MS = 120000; // 2 minutes
 const currentAQICache = new Map(); // key: city name, value: { data, ts }
 
-// Static fallback coordinates for major Indian cities (used if /cities endpoint lacks lat/lon)
-// Extend this list as needed; coordinates approximate city centers.
+// Static fallback coordinates for all 97 Indian cities (used if /cities endpoint lacks lat/lon)
+// Coordinates approximate city centers
 const CITY_COORDS = {
-    "Delhi": { lat: 28.6139, lon: 77.2090 },
-    "Mumbai": { lat: 19.0760, lon: 72.8777 },
-    "Bengaluru": { lat: 12.9716, lon: 77.5946 },
-    "Bangalore": { lat: 12.9716, lon: 77.5946 },
-    "Chennai": { lat: 13.0827, lon: 80.2707 },
-    "Kolkata": { lat: 22.5726, lon: 88.3639 },
-    "Hyderabad": { lat: 17.3850, lon: 78.4867 },
-    "Pune": { lat: 18.5204, lon: 73.8567 },
-    "Ahmedabad": { lat: 23.0225, lon: 72.5714 },
+    // North India
+    "Delhi": { lat: 28.7041, lon: 77.1025 },
+    "Noida": { lat: 28.5921, lon: 77.1845 },
+    "Ghaziabad": { lat: 28.6692, lon: 77.4538 },
+    "Gurugram": { lat: 28.4595, lon: 77.0266 },
+    "Gurgaon": { lat: 28.4595, lon: 77.0266 },
+    "Faridabad": { lat: 28.4089, lon: 77.3178 },
+    "Greater Noida": { lat: 28.4744, lon: 77.5040 },
+    "Chandigarh": { lat: 30.7333, lon: 76.7794 },
     "Jaipur": { lat: 26.9124, lon: 75.7873 },
     "Lucknow": { lat: 26.8467, lon: 80.9462 },
-    "Surat": { lat: 21.1702, lon: 72.8311 },
     "Kanpur": { lat: 26.4499, lon: 80.3319 },
-    "Nagpur": { lat: 21.1458, lon: 79.0882 },
-    "Patna": { lat: 25.5941, lon: 85.1376 },
-    "Indore": { lat: 22.7196, lon: 75.8577 },
-    "Thane": { lat: 19.2183, lon: 72.9781 },
-    "Bhopal": { lat: 23.2599, lon: 77.4126 },
-    "Visakhapatnam": { lat: 17.6868, lon: 83.2185 },
-    "Pimpri-Chinchwad": { lat: 18.6298, lon: 73.7997 },
-    "Vadodara": { lat: 22.3072, lon: 73.1812 },
-    "Ghaziabad": { lat: 28.6692, lon: 77.4538 },
-    "Ludhiana": { lat: 30.9010, lon: 75.8573 },
-    "Agra": { lat: 27.1767, lon: 78.0081 },
-    "Nashik": { lat: 19.9975, lon: 73.7898 },
-    "Faridabad": { lat: 28.4089, lon: 77.3178 },
-    "Meerut": { lat: 28.9845, lon: 77.7064 },
-    "Rajkot": { lat: 22.3039, lon: 70.8022 },
     "Varanasi": { lat: 25.3176, lon: 82.9739 },
-    "Srinagar": { lat: 34.0837, lon: 74.7973 },
-    "Aurangabad": { lat: 19.8762, lon: 75.3433 },
-    "Dhanbad": { lat: 23.7957, lon: 86.4304 },
+    "Agra": { lat: 27.1767, lon: 78.0081 },
     "Amritsar": { lat: 31.6340, lon: 74.8723 },
-    "Navi Mumbai": { lat: 19.0330, lon: 73.0297 },
-    "Allahabad": { lat: 25.4358, lon: 81.8463 },
-    "Ranchi": { lat: 23.3441, lon: 85.3096 },
-    "Howrah": { lat: 22.5958, lon: 88.2636 },
-    "Coimbatore": { lat: 11.0168, lon: 76.9558 },
-    "Jabalpur": { lat: 23.1815, lon: 79.9864 },
-    "Gwalior": { lat: 26.2183, lon: 78.1828 },
-    "Vijayawada": { lat: 16.5062, lon: 80.6480 },
-    "Jodhpur": { lat: 26.2389, lon: 73.0243 },
-    "Madurai": { lat: 9.9252, lon: 78.1198 },
-    "Raipur": { lat: 21.2514, lon: 81.6296 },
+    "Ludhiana": { lat: 30.9010, lon: 75.8573 },
     "Kota": { lat: 25.2138, lon: 75.8648 },
-    "Chandigarh": { lat: 30.7333, lon: 76.7794 },
-    "Guwahati": { lat: 26.1445, lon: 91.7362 },
+    "Jodhpur": { lat: 26.2389, lon: 73.0243 },
+    "Udaipur": { lat: 24.5854, lon: 73.7125 },
+    "Meerut": { lat: 28.9845, lon: 77.7064 },
+    "Aligarh": { lat: 27.8974, lon: 78.0880 },
+    "Allahabad": { lat: 25.4358, lon: 81.8463 },
+    "Jalandhar": { lat: 31.3260, lon: 75.5762 },
+    "Bareilly": { lat: 28.3670, lon: 79.4304 },
+    "Moradabad": { lat: 28.8389, lon: 78.7765 },
+    "Sonipat": { lat: 28.9931, lon: 77.0151 },
+    "Panipat": { lat: 29.3909, lon: 76.9635 },
+    "Alwar": { lat: 27.5530, lon: 76.6346 },
+    "Bharatpur": { lat: 27.2152, lon: 77.4883 },
+    "Mathura": { lat: 27.4924, lon: 77.6737 },
+    "Rohtak": { lat: 28.8955, lon: 76.5893 },
+    "Rewari": { lat: 28.1990, lon: 76.6189 },
+    "Bhiwani": { lat: 28.7930, lon: 76.1395 },
+    "Bhiwadi": { lat: 28.2091, lon: 76.8633 },
+    "Srinagar": { lat: 34.0837, lon: 74.7973 },
+    // South India
+    "Bangalore": { lat: 12.9716, lon: 77.5946 },
+    "Bengaluru": { lat: 12.9716, lon: 77.5946 },
+    "Chennai": { lat: 13.0827, lon: 80.2707 },
+    "Hyderabad": { lat: 17.3850, lon: 78.4867 },
+    "Kochi": { lat: 9.9312, lon: 76.2673 },
+    "Visakhapatnam": { lat: 17.6869, lon: 83.2185 },
+    "Coimbatore": { lat: 11.0081, lon: 76.9877 },
+    "Mysore": { lat: 12.2958, lon: 76.6394 },
+    "Kurnool": { lat: 15.8281, lon: 78.8353 },
+    "Vijayawada": { lat: 16.5062, lon: 80.6480 },
+    "Tirupati": { lat: 13.1939, lon: 79.8245 },
+    "Thanjavur": { lat: 10.7870, lon: 79.1378 },
+    "Madurai": { lat: 9.9252, lon: 78.1198 },
+    "Salem": { lat: 11.6643, lon: 78.1460 },
+    "Thiruvananthapuram": { lat: 8.5241, lon: 76.9366 },
+    "Warangal": { lat: 17.9784, lon: 79.6005 },
+    // West India
+    "Mumbai": { lat: 19.0760, lon: 72.8777 },
+    "Pune": { lat: 18.5204, lon: 73.8567 },
+    "Ahmedabad": { lat: 23.0225, lon: 72.5714 },
+    "Surat": { lat: 21.1702, lon: 72.8311 },
+    "Vadodara": { lat: 22.3072, lon: 73.1812 },
+    "Rajkot": { lat: 22.3039, lon: 70.8022 },
+    "Nashik": { lat: 19.9975, lon: 73.7898 },
+    "Aurangabad": { lat: 19.8762, lon: 75.3433 },
+    "Nagpur": { lat: 21.1458, lon: 79.0882 },
+    "Thane": { lat: 19.2183, lon: 72.9781 },
+    "Navi Mumbai": { lat: 19.0330, lon: 73.0297 },
+    "Pimpri-Chinchwad": { lat: 18.6298, lon: 73.7997 },
     "Solapur": { lat: 17.6599, lon: 75.9064 },
     "Hubli-Dharwad": { lat: 15.3647, lon: 75.1240 },
-    "Bareilly": { lat: 28.3670, lon: 79.4304 },
-    "Moradabad": { lat: 28.8389, lon: 78.7378 },
-    "Mysore": { lat: 12.2958, lon: 76.6394 },
-    "Gurgaon": { lat: 28.4595, lon: 77.0266 },
-    "Aligarh": { lat: 27.8974, lon: 78.0880 },
-    "Jalandhar": { lat: 31.3260, lon: 75.5762 },
+    // East India
+    "Kolkata": { lat: 22.5726, lon: 88.3639 },
+    "Patna": { lat: 25.5941, lon: 85.1376 },
+    "Ranchi": { lat: 23.3441, lon: 85.3096 },
+    "Guwahati": { lat: 26.1445, lon: 91.7362 },
+    "Raipur": { lat: 21.2514, lon: 81.6296 },
     "Bhubaneswar": { lat: 20.2961, lon: 85.8245 },
-    "Salem": { lat: 11.6643, lon: 78.1460 },
-    "Warangal": { lat: 17.9784, lon: 79.6006 }
+    "Jamshedpur": { lat: 22.8046, lon: 86.1855 },
+    "Asansol": { lat: 23.6840, lon: 86.9640 },
+    "Dhanbad": { lat: 23.7957, lon: 86.4304 },
+    "Howrah": { lat: 22.5958, lon: 88.2636 },
+    // Central India
+    "Indore": { lat: 22.7196, lon: 75.8577 },
+    "Bhopal": { lat: 23.1815, lon: 79.9864 },
+    "Jabalpur": { lat: 23.1815, lon: 79.9864 },
+    "Gwalior": { lat: 26.2183, lon: 78.1627 },
+    "Ujjain": { lat: 23.1815, lon: 75.7854 },
+    // North-East India
+    "Imphal": { lat: 24.8170, lon: 94.9042 },
+    "Shillong": { lat: 25.5729, lon: 91.8933 },
+    "Agartala": { lat: 23.8103, lon: 91.2868 },
+    "Dibrugarh": { lat: 27.4728, lon: 94.9103 }
 };
 
 // Add AQI standard badge on page load
@@ -838,11 +869,10 @@ async function initializeDashboard() {
                     legend.onAdd = function () {
                         const div = L.DomUtil.create('div', 'aqi-legend');
                         const ranges = [
-                            { max: 50, label: 'Good' },
-                            { max: 100, label: 'Moderate' },
-                            { max: 150, label: 'Unhealthy (SG)' },
-                            { max: 200, label: 'Unhealthy' },
-                            { max: 300, label: 'Very Unhealthy' },
+                            { max: 100, label: 'Good' },
+                            { max: 200, label: 'Moderate' },
+                            { max: 300, label: 'Unhealthy' },
+                            { max: 400, label: 'Very Unhealthy' },
                             { max: 500, label: 'Hazardous' }
                         ];
                         div.style.background = 'white';
@@ -1148,46 +1178,39 @@ async function loadCitiesForHealth() {
 }
 
 function getHealthImpact(aqi) {
-    if (aqi <= 50) {
+    if (aqi <= 100) {
         return {
             impact: 'Good - Air quality is satisfactory',
             recommendations: [
                 'Ideal conditions for outdoor activities',
-                'No health precautions needed'
+                'No health precautions needed',
+                'Air quality is considered satisfactory'
             ],
             atRisk: 'None'
         };
-    } else if (aqi <= 100) {
+    } else if (aqi <= 200) {
         return {
             impact: 'Moderate - Acceptable air quality',
             recommendations: [
                 'Unusually sensitive people should limit prolonged outdoor exertion',
-                'General population can enjoy outdoor activities'
+                'General population can enjoy outdoor activities',
+                'Consider reducing time outdoors if you are sensitive'
             ],
             atRisk: 'Unusually sensitive individuals'
         };
-    } else if (aqi <= 150) {
-        return {
-            impact: 'Unhealthy for Sensitive Groups',
-            recommendations: [
-                'Sensitive groups should reduce prolonged outdoor exertion',
-                'Wear masks if going outside for extended periods',
-                'Keep windows closed'
-            ],
-            atRisk: 'Children, elderly, people with respiratory/heart conditions'
-        };
-    } else if (aqi <= 200) {
+    } else if (aqi <= 300) {
         return {
             impact: 'Unhealthy - Everyone may experience health effects',
             recommendations: [
                 'Limit outdoor activities',
                 'Wear N95/N99 masks when going outside',
                 'Use air purifiers indoors',
-                'Avoid strenuous activities'
+                'Avoid strenuous activities',
+                'Keep windows closed'
             ],
             atRisk: 'Everyone, especially sensitive groups'
         };
-    } else if (aqi <= 300) {
+    } else if (aqi <= 400) {
         return {
             impact: 'Very Unhealthy - Health alert',
             recommendations: [
@@ -1589,29 +1612,29 @@ async function displayModelMetrics(city) {
 // ============================================================================
 
 function getAQIColor(aqi) {
-    if (aqi <= 50) return '#00e400';
-    if (aqi <= 100) return '#ffff00';
-    if (aqi <= 150) return '#ff7e00';
-    if (aqi <= 200) return '#ff0000';
-    if (aqi <= 300) return '#8f3f97';
+    if (aqi <= 100) return '#00e400';
+    if (aqi <= 200) return '#ffff00';
+    if (aqi <= 300) return '#ff7e00';
+    if (aqi <= 400) return '#ff0000';
+    if (aqi <= 500) return '#8f3f97';
     return '#7e0023';
 }
 
 function getAQIColorClass(aqi) {
-    if (aqi <= 50) return 'aqi-good';
-    if (aqi <= 100) return 'aqi-moderate';
-    if (aqi <= 150) return 'aqi-unhealthy-sensitive';
-    if (aqi <= 200) return 'aqi-unhealthy';
-    if (aqi <= 300) return 'aqi-very-unhealthy';
+    if (aqi <= 100) return 'aqi-good';
+    if (aqi <= 200) return 'aqi-moderate';
+    if (aqi <= 300) return 'aqi-unhealthy';
+    if (aqi <= 400) return 'aqi-very-unhealthy';
+    if (aqi <= 500) return 'aqi-hazardous';
     return 'aqi-hazardous';
 }
 
 function getAQICategory(aqi) {
-    if (aqi <= 50) return 'Good';
-    if (aqi <= 100) return 'Moderate';
-    if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
-    if (aqi <= 200) return 'Unhealthy';
-    if (aqi <= 300) return 'Very Unhealthy';
+    if (aqi <= 100) return 'Good';
+    if (aqi <= 200) return 'Moderate';
+    if (aqi <= 300) return 'Unhealthy';
+    if (aqi <= 400) return 'Very Unhealthy';
+    if (aqi <= 500) return 'Hazardous';
     return 'Hazardous';
 }
 

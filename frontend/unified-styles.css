@@ -370,10 +370,9 @@ body {
 /* AQI Color Classes */
 .aqi-good { background: #00e400; color: white; }
 .aqi-moderate { background: #ffff00; color: #333; }
-.aqi-unhealthy-sensitive { background: #ff7e00; color: white; }
-.aqi-unhealthy { background: #ff0000; color: white; }
-.aqi-very-unhealthy { background: #8f3f97; color: white; }
-.aqi-hazardous { background: #7e0023; color: white; }
+.aqi-unhealthy { background: #ff7e00; color: white; }
+.aqi-very-unhealthy { background: #ff0000; color: white; }
+.aqi-hazardous { background: #8f3f97; color: white; }
 
 /* ============================================================================
    DASHBOARD TABS

@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import schedule
 import time
 from datetime import datetime
-from api_handlers.cpcb_handler import CPCBHandler
 from api_handlers.openweather_handler import OpenWeatherHandler
 from api_handlers.iqair_handler import IQAirHandler
 from database.db_operations import DatabaseOperations
@@ -36,27 +35,26 @@ logger = setup_logger(
 
 class DataCollectionPipeline:
     def __init__(self):
-        self.cpcb = CPCBHandler()
         self.openweather = OpenWeatherHandler()
         self.iqair = IQAirHandler()
         self.db = DatabaseOperations()
-        self.cities = CITIES
+        
+        # Use all cities with defined coordinates
+        self.all_cities = list(self.openweather.CITY_COORDINATES.keys())
         self.priority_cities = PRIORITY_CITIES
-        self.extended_cities = EXTENDED_CITIES
         self.lock = threading.Lock()
         
         logger.info(f"Pipeline initialized:")
-        logger.info(f"  Total cities: {len(self.cities)}")
-        logger.info(f"  Priority cities (3 APIs): {len(self.priority_cities)}")
-        logger.info(f"  Extended cities (1 API): {len(self.extended_cities)}")
+        logger.info(f"  Total cities with coordinates: {len(self.all_cities)}")
+        logger.info(f"  Priority cities (additional API calls): {len(self.priority_cities)}")
     
     def collect_data_all_cities_parallel(self):
         """
-        Collect data in parallel for the union of CITIES and EXTENDED_CITIES.
-        Attempts CPCB + IQAir + OpenWeather for every city (priority gating disabled).
+        Collect data in parallel for all cities with defined coordinates.
+        Attempts IQAir + OpenWeather for every city.
         """
-        # Build unique list of cities
-        unique_cities = sorted(list(set(self.cities) | set(self.extended_cities)))
+        # Use all cities with coordinates
+        unique_cities = sorted(self.all_cities)
         logger.info(f"Starting parallel data collection for {len(unique_cities)} Indian cities (all sources)...")
         start_time = time.time()
         
@@ -105,31 +103,13 @@ class DataCollectionPipeline:
     
     def collect_priority_city_data(self, city):
         """
-        Collect data from all 3 sources for priority cities
-        CPCB + IQAir + OpenWeather
+        Collect data from 2 sources for priority cities
+        IQAir + OpenWeather
         """
         try:
             data_collected = False
             
-            # 1. CPCB (if available)
-            try:
-                cpcb_data = self.cpcb.fetch_aqi_data(city)
-                if cpcb_data:
-                    for data in cpcb_data:
-                        with self.lock:
-                            self.db.insert_pollution_data(
-                                city, data['timestamp'], data, 'CPCB'
-                            )
-                            # Evaluate alerts
-                            self._process_alerts(city, data)
-                    city_logger = get_city_logger('main', city)
-                    city_logger.debug("CPCB data collected and stored")
-                    data_collected = True
-            except Exception as e:
-                city_logger = get_city_logger('main', city)
-                city_logger.warning(f"CPCB data collection failed: {str(e)}")
-            
-            # 2. IQAir (if available)
+            # 1. IQAir (if available)
             try:
                 iqair_data = self.iqair.fetch_aqi_data(city)
                 if iqair_data:
@@ -146,7 +126,7 @@ class DataCollectionPipeline:
                 city_logger = get_city_logger('main', city)
                 city_logger.warning(f"IQAir data collection failed: {str(e)}")
             
-            # 3. OpenWeather (always available)
+            # 2. OpenWeather (always available)
             try:
                 city_logger = get_city_logger('main', city)
 

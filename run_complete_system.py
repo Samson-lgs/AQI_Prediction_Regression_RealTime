@@ -43,14 +43,12 @@ def step_2_collect_data():
     print_banner("STEP 2: DATA COLLECTION")
     
     try:
-        from api_handlers.cpcb_handler import CPCBHandler
         from api_handlers.openweather_handler import OpenWeatherHandler
         from api_handlers.iqair_handler import IQAirHandler
         from database.db_operations import DatabaseOperations
         from datetime import datetime
         
         db = DatabaseOperations()
-        cpcb = CPCBHandler()
         openweather = OpenWeatherHandler()
         iqair = IQAirHandler()
         
