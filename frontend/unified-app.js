@@ -420,46 +420,51 @@ async function loadTopCities() {
         const cities = await getCities();
         if (!cities.length) return;
 
-        // Take a sample of top cities using BATCH endpoint
-        const topCities = cities.slice(0, 8);
-        const cityNames = topCities.map(c => c.name).join(',');
-        
+        // Fetch all cities AQI data to find highest AQI cities
         let cityData = [];
-        let batchUsed = false;
-        if (BATCH_SUPPORTED !== false) {
-            try {
-                const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
-                if (batchResp.ok) {
-                    const batchData = await batchResp.json();
-                    cityData = (batchData.data || []).map(d => ({
-                        name: d.city,
-                        aqi: d.aqi_value || d.aqi || 0,
-                        category: getAQICategory(d.aqi_value || d.aqi || 0)
-                    })).filter(d => d.aqi > 0);
-                    BATCH_SUPPORTED = true;
-                    batchUsed = true;
-                } else if (batchResp.status === 404) {
-                    BATCH_SUPPORTED = false;
-                    console.warn('Batch endpoint 404 (top cities) - disabling further batch attempts');
+        
+        // Try to get all current AQI data
+        const allRows = await fetchAllCurrentAQI();
+        if (Array.isArray(allRows) && allRows.length) {
+            cityData = allRows
+                .map(r => {
+                    const val = Number(r.aqi ?? r.aqi_value ?? 0);
+                    return val > 0 ? { name: r.city, aqi: val, category: getAQICategory(val) } : null;
+                })
+                .filter(Boolean)
+                .sort((a, b) => b.aqi - a.aqi) // Sort by highest AQI first
+                .slice(0, 8); // Take top 8 highest AQI cities
+        } else {
+            // Fallback: try batch endpoint with priority cities
+            const topCities = cities.slice(0, 20); // Get more cities to find highest
+            const cityNames = topCities.map(c => c.name).join(',');
+            
+            if (BATCH_SUPPORTED !== false) {
+                try {
+                    const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
+                    if (batchResp.ok) {
+                        const batchData = await batchResp.json();
+                        cityData = (batchData.data || []).map(d => ({
+                            name: d.city,
+                            aqi: d.aqi_value || d.aqi || 0,
+                            category: getAQICategory(d.aqi_value || d.aqi || 0)
+                        }))
+                        .filter(d => d.aqi > 0)
+                        .sort((a, b) => b.aqi - a.aqi) // Sort by highest AQI first
+                        .slice(0, 8);
+                        BATCH_SUPPORTED = true;
+                    } else if (batchResp.status === 404) {
+                        BATCH_SUPPORTED = false;
+                        console.warn('Batch endpoint 404 (top cities) - disabling further batch attempts');
+                    }
+                } catch (err) {
+                    console.warn('Batch endpoint error (top cities):', err);
                 }
-            } catch (err) {
-                console.warn('Batch endpoint error (top cities):', err);
             }
-        }
-
-        if (!batchUsed) {
-            const allRows = await fetchAllCurrentAQI();
-            if (Array.isArray(allRows) && allRows.length) {
-                const topSet = new Set(topCities.map(c => c.name.toLowerCase()));
-                cityData = allRows
-                    .filter(r => r.city && topSet.has(r.city.toLowerCase()))
-                    .map(r => {
-                        const val = Number(r.aqi ?? r.aqi_value ?? 0);
-                        return val > 0 ? { name: r.city, aqi: val, category: getAQICategory(val) } : null;
-                    })
-                    .filter(Boolean);
-            } else {
-                const limited = topCities.slice(0, 3);
+            
+            // Last resort: fetch a few priority cities individually
+            if (cityData.length === 0) {
+                const limited = cities.slice(0, 5);
                 const tempData = [];
                 for (const city of limited) {
                     const data = await fetchAQICurrentWithBackoff(city.name, 1, 900);
@@ -473,7 +478,7 @@ async function loadTopCities() {
                     }
                     await sleep(600);
                 }
-                cityData = tempData;
+                cityData = tempData.sort((a, b) => b.aqi - a.aqi).slice(0, 8);
             }
         }
 
@@ -647,48 +652,67 @@ async function initializeDashboard() {
         if (!cities.length) return;
         
         // Load rankings chart using batch endpoint for speed
-        const rankingsCities = cities.slice(0, 10); // limit initial load for speed
-        const cityNames = rankingsCities.map(c => c.name).join(',');
-        
+        // Fetch all cities to show highest AQI cities in ranking
         let rankingData = [];
-        try {
-            const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
-            if (batchResp.ok) {
-                const batchData = await batchResp.json();
-                console.log('Rankings batch response:', batchData);
-                // Handle both aqi and aqi_value field names
-                rankingData = (batchData.data || [])
-                    .map(d => {
-                        const aqi = d.aqi_value || d.aqi;
-                        return aqi != null && aqi > 0 ? { city: d.city, aqi: aqi } : null;
-                    })
-                    .filter(Boolean); // Filter out null entries
-                
-                console.log(`Rankings: ${rankingData.length} cities with valid AQI data`);
-                
-                // Cache the results
-                batchData.data?.forEach(d => {
-                    const key = (d.city || '').toLowerCase();
-                    currentAQICache.set(key, { data: d, ts: Date.now() });
-                });
-            } else {
-                console.error('Batch endpoint returned error:', batchResp.status);
-                throw new Error(`HTTP ${batchResp.status}`);
-            }
-        } catch (batchErr) {
-            console.warn('Batch endpoint failed, falling back to individual requests:', batchErr);
-            // Fallback to individual requests
-            const rankingPromises = rankingsCities.map(async city => {
-                try {
-                    const data = await fetchCurrentAQI(city.name);
-                    const aqi = data?.aqi_value || data?.aqi || 0;
-                    return aqi > 0 ? { city: city.name, aqi } : null;
-                } catch (_) { return null; }
-            });
-            rankingData = (await Promise.all(rankingPromises)).filter(Boolean);
-        }
         
-        rankingData.sort((a, b) => b.aqi - a.aqi);
+        // Try to get all current AQI data first
+        const allRows = await fetchAllCurrentAQI();
+        if (Array.isArray(allRows) && allRows.length) {
+            rankingData = allRows
+                .map(r => {
+                    const aqi = r.aqi_value || r.aqi;
+                    return aqi != null && aqi > 0 ? { city: r.city, aqi: aqi } : null;
+                })
+                .filter(Boolean)
+                .sort((a, b) => b.aqi - a.aqi) // Sort by highest AQI first
+                .slice(0, 20); // Show top 20 highest AQI cities
+            
+            console.log(`Rankings: ${rankingData.length} cities with valid AQI data (showing highest AQI)`);
+        } else {
+            // Fallback to batch endpoint with all cities
+            const cityNames = cities.map(c => c.name).join(',');
+            
+            try {
+                const batchResp = await fetch(`${API_BASE_URL}/aqi/batch?cities=${encodeURIComponent(cityNames)}`);
+                if (batchResp.ok) {
+                    const batchData = await batchResp.json();
+                    console.log('Rankings batch response:', batchData);
+                    // Handle both aqi and aqi_value field names
+                    rankingData = (batchData.data || [])
+                        .map(d => {
+                            const aqi = d.aqi_value || d.aqi;
+                            return aqi != null && aqi > 0 ? { city: d.city, aqi: aqi } : null;
+                        })
+                        .filter(Boolean)
+                        .sort((a, b) => b.aqi - a.aqi) // Sort by highest AQI first
+                        .slice(0, 20); // Show top 20 highest AQI cities
+                    
+                    console.log(`Rankings: ${rankingData.length} cities with valid AQI data`);
+                    
+                    // Cache the results
+                    batchData.data?.forEach(d => {
+                        const key = (d.city || '').toLowerCase();
+                        currentAQICache.set(key, { data: d, ts: Date.now() });
+                    });
+                } else {
+                    console.error('Batch endpoint returned error:', batchResp.status);
+                    throw new Error(`HTTP ${batchResp.status}`);
+                }
+            } catch (batchErr) {
+                console.warn('Batch endpoint failed, falling back to individual requests:', batchErr);
+                // Fallback to individual requests for first 15 cities
+                const rankingsCities = cities.slice(0, 15);
+                const rankingPromises = rankingsCities.map(async city => {
+                    try {
+                        const data = await fetchCurrentAQI(city.name);
+                        const aqi = data?.aqi_value || data?.aqi || 0;
+                        return aqi > 0 ? { city: city.name, aqi } : null;
+                    } catch (_) { return null; }
+                });
+                rankingData = (await Promise.all(rankingPromises)).filter(Boolean);
+                rankingData.sort((a, b) => b.aqi - a.aqi); // Sort by highest AQI first
+            }
+        }
         
         console.log('Rankings data to display:', rankingData);
         
@@ -704,7 +728,7 @@ async function initializeDashboard() {
                             color: rankingData.map(d => getAQIColor(d.aqi))
                         }
                     }], {
-                        title: 'Cities by AQI Level',
+                        title: '🚨 Highest AQI Cities (Sorted by Pollution Level)',
                         xaxis: { title: 'City' },
                         yaxis: { title: 'AQI' },
                         height: 400
