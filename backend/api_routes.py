@@ -618,34 +618,64 @@ class ForecastSingle(Resource):
             else:
                 base_aqi = result['aqi'] if result['aqi'] else float(latest.get('aqi_value', 100))
             
-            # Generate trend-based hourly predictions
+            # Generate trend-based hourly predictions with realistic temporal progression
             predictions = []
             
+            # Set random seed based on city and timestamp for consistent predictions
+            seed_value = hash(city + end_date.strftime("%Y%m%d%H")) % (2**32)
+            np.random.seed(seed_value)
+            
+            # Generate a base trend (slight increase/decrease over time)
+            # Random walk: small incremental changes that accumulate
+            trend_direction = np.random.choice([-1, 0, 1], p=[0.3, 0.4, 0.3])  # Slight bias toward stability
+            
+            current_aqi = base_aqi
+            
             for h in range(1, hours + 1):
-                # Realistic diurnal variation: AQI tends to be higher in early morning/evening, lower in afternoon
                 # Hour of day for prediction
                 future_hour = (end_date + timedelta(hours=h)).hour
                 
-                # Diurnal pattern: multiply base by factor between 0.85 and 1.15
-                if 6 <= future_hour <= 9 or 18 <= future_hour <= 21:
-                    # Morning and evening rush hours: higher AQI (5-15% increase)
-                    diurnal_factor = 1.0 + np.random.uniform(0.05, 0.15)
+                # 1. Diurnal pattern: realistic daily cycle
+                if 6 <= future_hour <= 9:
+                    # Morning rush hour: 8-15% increase
+                    diurnal_factor = 1.0 + (0.08 + (future_hour - 6) * 0.02)
+                elif 10 <= future_hour <= 11:
+                    # Late morning: transitioning back down
+                    diurnal_factor = 1.05
                 elif 12 <= future_hour <= 16:
-                    # Afternoon: slightly lower AQI (0-10% decrease)
-                    diurnal_factor = 1.0 - np.random.uniform(0.0, 0.10)
+                    # Afternoon: 5-10% decrease (better dispersion)
+                    diurnal_factor = 0.92 - ((future_hour - 12) * 0.01)
+                elif 17 <= future_hour <= 21:
+                    # Evening rush hour: 10-18% increase
+                    diurnal_factor = 1.05 + ((future_hour - 17) * 0.03)
+                elif 22 <= future_hour <= 23:
+                    # Late evening: moderate
+                    diurnal_factor = 1.08
                 else:
-                    # Night/early morning: moderate variation
-                    diurnal_factor = 1.0 + np.random.uniform(-0.05, 0.05)
+                    # Night/early morning (0-5): stable to slight increase
+                    diurnal_factor = 1.0 + (future_hour * 0.01)
                 
-                # Add small random noise (±5%)
-                noise_factor = 1.0 + np.random.uniform(-0.05, 0.05)
+                # 2. Add gradual trend progression (accumulates over hours)
+                trend_factor = 1.0 + (trend_direction * h * 0.003)  # Max ±14% over 48h
                 
-                # Calculate predicted AQI with minimum floor of 50% of base
-                predicted_aqi = int(base_aqi * diurnal_factor * noise_factor)
-                predicted_aqi = max(int(base_aqi * 0.5), predicted_aqi)  # Never drop below 50% of base
-                predicted_aqi = min(int(base_aqi * 1.5), predicted_aqi)  # Never exceed 150% of base
+                # 3. Add hour-specific random variation (±3%)
+                hour_noise = np.random.uniform(-0.03, 0.03)
                 
-                confidence = 95 - (h * 0.6)
+                # Calculate predicted AQI
+                predicted_aqi = current_aqi * diurnal_factor * trend_factor * (1 + hour_noise)
+                
+                # Apply reasonable bounds (50% to 180% of base)
+                predicted_aqi = max(int(base_aqi * 0.5), int(predicted_aqi))
+                predicted_aqi = min(int(base_aqi * 1.8), predicted_aqi)
+                
+                # Ensure minimum AQI of 10
+                predicted_aqi = max(10, predicted_aqi)
+                
+                # Update current for next iteration (creates continuity)
+                current_aqi = predicted_aqi
+                
+                # Confidence decreases with forecast horizon
+                confidence = 95 - (h * 0.8)
                 
                 predictions.append({
                     'hour': h,
@@ -653,6 +683,9 @@ class ForecastSingle(Resource):
                     'predicted_aqi': predicted_aqi,
                     'confidence': round(max(50, confidence), 2)
                 })
+            
+            # Reset random seed
+            np.random.seed(None)
             
             return {
                 'city': city,
