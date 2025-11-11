@@ -1335,13 +1335,16 @@ async function loadPredictions() {
             }));
 
             // Choose a representative predicted AQI value for the comparison card:
-            // Use the prediction at the selected forecast horizon (default last hour requested) or first if unavailable.
-            const horizonIndex = Math.min((hours || predictionData.forecast_hours || predictionData.forecast.length) - 1, predictionData.forecast.length - 1);
-            if (horizonIndex >= 0) {
+            // Use the prediction at the selected forecast horizon (the last hour in the forecast)
+            const horizonIndex = predictionData.forecast.length - 1;
+            if (horizonIndex >= 0 && predictionData.forecast[horizonIndex]) {
                 predictionData.predicted_aqi = predictionData.forecast[horizonIndex].aqi;
                 predictionData.confidence = predictionData.forecast[horizonIndex].confidence;
+                predictionData.forecast_hours = predictionData.forecast[horizonIndex].hour;
+                console.log(`Using forecast at hour ${predictionData.forecast[horizonIndex].hour}: AQI = ${predictionData.predicted_aqi}`);
             } else {
                 predictionData.predicted_aqi = 0;
+                predictionData.forecast_hours = hours;
             }
         } else {
             // Fallback to avoid runtime errors
@@ -1349,6 +1352,7 @@ async function loadPredictions() {
             if (typeof predictionData.predicted_aqi === 'undefined') {
                 predictionData.predicted_aqi = 0;
             }
+            predictionData.forecast_hours = hours;
         }
         
     // Display all prediction components
@@ -1414,6 +1418,12 @@ function displayCurrentVsPredicted() {
     if (predictedAqiValue) predictedAqiValue.className = `value large ${getAQIColorClass(predictedAQI)}`;
     if (predictedAqiStatus) predictedAqiStatus.textContent = getAQICategory(predictedAQI);
     if (confidenceValue) confidenceValue.textContent = predictionData.confidence || 'N/A';
+    
+    // Update the forecast hours display
+    const predictionHoursEl = document.getElementById('predictionHours');
+    if (predictionHoursEl) {
+        predictionHoursEl.textContent = predictionData.forecast_hours || 24;
+    }
     
     // Update change indicator
     const aqiChange = document.getElementById('aqiChange');
