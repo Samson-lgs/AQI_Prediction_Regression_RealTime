@@ -252,7 +252,8 @@ class UnifiedPredictor:
         timestamp: datetime = None
     ) -> Dict[str, any]:
         """
-        Get prediction from the best model (XGBoost by default).
+        Get prediction from the best model (Random Forest by default).
+        XGBoost model has issues with underestimation - using Random Forest instead.
         
         Args:
             city: City name
@@ -264,9 +265,10 @@ class UnifiedPredictor:
         """
         all_preds = self.predict_all_models(pollutants, city=city, timestamp=timestamp)
         
-        # Prefer XGBoost (typically best R²), then Random Forest, then Linear Regression
+        # Prefer Random Forest (most accurate in testing), then Linear Regression, then XGBoost
+        # Note: XGBoost model currently has issues with severe underestimation
         best_model = None
-        for preferred in ["xgboost", "random_forest", "linear_regression"]:
+        for preferred in ["random_forest", "linear_regression", "xgboost"]:
             if preferred in all_preds and all_preds[preferred] is not None:
                 best_model = preferred
                 break

@@ -634,53 +634,47 @@ class ForecastSingle(Resource):
             np.random.seed(seed_value)
             
             # Generate a base trend (slight increase/decrease over time)
-            # Random walk: small incremental changes that accumulate
-            trend_direction = np.random.choice([-1, 0, 1], p=[0.3, 0.4, 0.3])  # Slight bias toward stability
-            
-            current_aqi = base_aqi
+            trend_direction = np.random.choice([-1, 0, 1], p=[0.35, 0.4, 0.25])  # Slight bias toward decrease/stability
             
             for h in range(1, hours + 1):
                 # Hour of day for prediction
                 future_hour = (end_date + timedelta(hours=h)).hour
                 
-                # 1. Diurnal pattern: realistic daily cycle
+                # 1. Diurnal pattern: realistic daily cycle (apply to BASE, not compounding)
                 if 6 <= future_hour <= 9:
-                    # Morning rush hour: 8-15% increase
-                    diurnal_factor = 1.0 + (0.08 + (future_hour - 6) * 0.02)
+                    # Morning rush hour: 5-12% increase from base
+                    diurnal_factor = 1.0 + (0.05 + (future_hour - 6) * 0.02)
                 elif 10 <= future_hour <= 11:
-                    # Late morning: transitioning back down
-                    diurnal_factor = 1.05
+                    # Late morning: slight increase
+                    diurnal_factor = 1.03
                 elif 12 <= future_hour <= 16:
-                    # Afternoon: 5-10% decrease (better dispersion)
-                    diurnal_factor = 0.92 - ((future_hour - 12) * 0.01)
+                    # Afternoon: slight decrease (better dispersion)
+                    diurnal_factor = 0.95 - ((future_hour - 12) * 0.01)
                 elif 17 <= future_hour <= 21:
-                    # Evening rush hour: 10-18% increase
-                    diurnal_factor = 1.05 + ((future_hour - 17) * 0.03)
+                    # Evening rush hour: 5-15% increase from base
+                    diurnal_factor = 1.03 + ((future_hour - 17) * 0.025)
                 elif 22 <= future_hour <= 23:
-                    # Late evening: moderate
-                    diurnal_factor = 1.08
+                    # Late evening: moderate increase
+                    diurnal_factor = 1.05
                 else:
-                    # Night/early morning (0-5): stable to slight increase
-                    diurnal_factor = 1.0 + (future_hour * 0.01)
+                    # Night/early morning (0-5): stable
+                    diurnal_factor = 1.0 + (future_hour * 0.005)
                 
-                # 2. Add gradual trend progression (accumulates over hours)
-                trend_factor = 1.0 + (trend_direction * h * 0.003)  # Max ±14% over 48h
+                # 2. Add very gradual trend over forecast period (max ±8% over 48h)
+                trend_factor = 1.0 + (trend_direction * h * 0.0017)
                 
-                # 3. Add hour-specific random variation (±3%)
-                hour_noise = np.random.uniform(-0.03, 0.03)
+                # 3. Add small random variation (±2%)
+                hour_noise = np.random.uniform(-0.02, 0.02)
                 
-                # Calculate predicted AQI
-                predicted_aqi = current_aqi * diurnal_factor * trend_factor * (1 + hour_noise)
+                # Calculate predicted AQI - apply factors to BASE, not previous prediction
+                predicted_aqi = base_aqi * diurnal_factor * trend_factor * (1 + hour_noise)
                 
-                # Apply reasonable bounds (50% to 180% of base)
-                predicted_aqi = max(int(base_aqi * 0.5), int(predicted_aqi))
-                predicted_aqi = min(int(base_aqi * 1.8), predicted_aqi)
+                # Apply reasonable bounds (80% to 130% of base for realistic variation)
+                predicted_aqi = max(int(base_aqi * 0.80), int(predicted_aqi))
+                predicted_aqi = min(int(base_aqi * 1.30), predicted_aqi)
                 
                 # Ensure minimum AQI of 10
                 predicted_aqi = max(10, predicted_aqi)
-                
-                # Update current for next iteration (creates continuity)
-                current_aqi = predicted_aqi
                 
                 # Confidence decreases with forecast horizon
                 confidence = 95 - (h * 0.8)
